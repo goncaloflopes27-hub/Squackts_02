@@ -57,6 +57,25 @@ Setup rápido
 5. Arrancar aplicação:
    - `python app.py`
 
+Arranque fácil no Windows
+-------------------------
+- Duplo clique direto: `abrir_squackts.bat`
+- Via PowerShell: `.\abrir_squackts.ps1`
+  - valida pasta do projeto
+  - deteta `py`/`python`
+  - cria `.venv` se necessário
+  - instala dependências de `requirements.txt` quando mudam
+  - arranca `app.py`
+
+Criar atalho no Ambiente de Trabalho (Windows)
+----------------------------------------------
+1. Abrir PowerShell na pasta do projeto.
+2. Executar:
+   - `.\criar_atalho_squackts.ps1`
+3. Será criado no Desktop:
+   - `Squackts POD Manager.lnk`
+   - O atalho aponta para `abrir_squackts.bat` (robusto a ExecutionPolicy).
+
 No arranque a app:
 - garante diretórios obrigatórios
 - cria/abre base SQLite
