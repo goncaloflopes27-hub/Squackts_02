@@ -110,3 +110,7 @@ O smoke usa um perfil temporário por omissão. Empacotar exige `requirements-bu
 Em `/workspace/.cloud-setup/Squackts_02/`: `full-tests.log`, `pre-commit-tests.log`, `app-smoke-final.log`, `app-smoke-empty.log`, `performance-ui-baseline.json`, `performance-ui-final.json`, `build-final.log`, `bundle-smoke-final.log`, `screenshots-final/`, `screenshots-empty/` e `bundle-screenshots/`.
 
 O snapshot `pre-commit-source-20261020.tar.gz` preserva os fontes anteriores à criação dos commits. Ambos o snapshot e os commits continuam neste ambiente; não são uma cópia externa nem uma publicação no GitHub.
+
+## Estado observado do ambiente cloud
+
+Na consulta de configuração de 20 de outubro de 2026, `draft_id` e `revision` foram devolvidos como `null`, com uma versão publicada que contém o script de instalação e as instruções atualizadas. A indicação anterior de rascunho pendente ficou desatualizada. Esta leitura não demonstra que os commits acabados de criar estejam num novo snapshot nem que uma tarefa nova os restaure; a configuração cloud e a publicação do código no GitHub são operações diferentes.

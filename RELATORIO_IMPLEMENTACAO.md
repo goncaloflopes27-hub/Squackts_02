@@ -2,7 +2,7 @@
 
 O SquackTS mantém o propósito de gerir localmente catálogo, clientes, encomendas, produção POD e expedição. O núcleo foi melhorado e testado em Linux; a adequação comercial e a entrega Windows continuam incompletas.
 
-**Código preservado:** commits locais de dependências (`9f58b11`), núcleo/dados (`c981b60`), interface (`47fcfcd`) e distribuição/CI (`d2b1d0b`), seguidos pelo commit de documentação. Consultar `git log -5 --oneline`. Não foi feito push; este histórico local não substitui uma cópia externa.
+**Código preservado:** commits locais de dependências (`9f58b11`), núcleo/dados (`c981b60`), interface (`47fcfcd`) e distribuição/CI (`d2b1d0b`), seguidos pela documentação e atualização do estado cloud. Consultar `git log -6 --oneline`. Não foi feito push; este histórico local não substitui uma cópia externa.
 
 ## 1. Evitar erros comerciais
 
@@ -30,4 +30,4 @@ Em 20 de outubro de 2026 passaram 114 testes, Ruff e mypy (65 ficheiros). O exec
 
 Prioridade comercial: recebimentos/sinal, prazo e levantamento, juntamente com IVA explícito. Depois, controlo de versão e pesquisa otimizada; antes de fechar a distribuição, ensaio com cópia dos dados reais e Windows. As políticas de sinal, entrega a crédito e regime fiscal ainda precisam de definição. Integrações, expedições parciais e colaboração entre máquinas continuam por implementar.
 
-**Ativar o ambiente cloud:** nas definições deste ambiente, rever o script de instalação e as instruções de arranque guardados em rascunho, guardar e publicar. A publicação cria o snapshot; não faz push para o GitHub nem demonstra restauração numa nova tarefa. O [README](README.md) contém os procedimentos de utilização e recuperação.
+**Ambiente cloud:** a consulta atual devolve a configuração publicada, com script de instalação e instruções de arranque, sem rascunho pendente. Podem ser revistos nas definições do ambiente. Um snapshot com estes novos commits exige nova publicação; essa publicação e a restauração numa tarefa nova não foram verificadas. Publicar o ambiente não faz push para o GitHub. O [README](README.md) contém os procedimentos de utilização e recuperação.
