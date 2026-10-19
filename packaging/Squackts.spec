@@ -52,3 +52,6 @@ from shutil import copy2
 distribution = Path(DISTPATH) / "SquackTS"
 for document in ("README.md", "README.txt", "AGENTS.md", "PLANO_MELHORIAS.md", "RELATORIO_IMPLEMENTACAO.md", "criar_atalho_squackts.ps1"):
     copy2(project_root / document, distribution / document)
+validation_dir = distribution / "docs"
+validation_dir.mkdir(exist_ok=True)
+copy2(project_root / "docs" / "VALIDACAO.md", validation_dir / "VALIDACAO.md")
