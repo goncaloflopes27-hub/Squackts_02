@@ -6,11 +6,11 @@ param(
 $ErrorActionPreference = 'Stop'
 
 function Show-Info([string]$Message) {
-    Write-Host "[Squackts] $Message" -ForegroundColor Cyan
+    Write-Host "[SquackTS] $Message" -ForegroundColor Cyan
 }
 
 function Show-ErrorAndExit([string]$Message, [int]$Code = 1) {
-    Write-Host "[Squackts] ERRO: $Message" -ForegroundColor Red
+    Write-Host "[SquackTS] ERRO: $Message" -ForegroundColor Red
     exit $Code
 }
 
@@ -48,7 +48,6 @@ try {
 
     $venvPath = Join-Path $ProjectPath '.venv'
     $venvPython = Join-Path $venvPath 'Scripts\python.exe'
-    $venvPip = Join-Path $venvPath 'Scripts\pip.exe'
 
     if (-not (Test-Path -LiteralPath $venvPython)) {
         Show-Info 'A criar ambiente virtual (.venv)...'
@@ -68,7 +67,16 @@ try {
         Show-ErrorAndExit 'requirements.txt não encontrado na pasta do projeto.'
     }
 
-    $requirementsHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $requirementsPath).Hash
+    & $venvPython -c "import sys; assert sys.version_info >= (3, 11), 'Requer Python 3.11 ou superior'"
+    if ($LASTEXITCODE -ne 0) {
+        Show-ErrorAndExit 'O ambiente .venv requer Python 3.11+. Recrie-o com uma versão suportada.'
+    }
+    $constraintsPath = Join-Path $ProjectPath 'constraints.txt'
+    if (-not (Test-Path -LiteralPath $constraintsPath)) {
+        Show-ErrorAndExit 'constraints.txt não encontrado na pasta do projeto.'
+    }
+    $requirementsHash = ((Get-FileHash -Algorithm SHA256 -LiteralPath $requirementsPath).Hash +
+        (Get-FileHash -Algorithm SHA256 -LiteralPath $constraintsPath).Hash)
     $hashStampPath = Join-Path $venvPath '.requirements.sha256'
     $installedHash = ''
     if (Test-Path -LiteralPath $hashStampPath) {
@@ -77,13 +85,13 @@ try {
 
     if ($installedHash -ne $requirementsHash) {
         Show-Info 'A instalar/atualizar dependências...'
-        & $venvPython -m pip install --upgrade pip
-        if ($LASTEXITCODE -ne 0) {
-            Show-ErrorAndExit 'Falha ao atualizar o pip no ambiente virtual.'
-        }
-        & $venvPip install -r $requirementsPath
+        & $venvPython -m pip install --disable-pip-version-check -r $requirementsPath
         if ($LASTEXITCODE -ne 0) {
             Show-ErrorAndExit 'Falha ao instalar dependências de requirements.txt.'
+        }
+        & $venvPython -m pip check
+        if ($LASTEXITCODE -ne 0) {
+            Show-ErrorAndExit 'Dependências incompatíveis no ambiente virtual.'
         }
         Set-Content -LiteralPath $hashStampPath -Value $requirementsHash -Encoding UTF8
     }
@@ -91,7 +99,7 @@ try {
         Show-Info 'Dependências já estão em dia.'
     }
 
-    Show-Info 'A arrancar Squackts POD Manager...'
+    Show-Info 'A arrancar SquackTS...'
     & $venvPython app.py
     exit $LASTEXITCODE
 }

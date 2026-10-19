@@ -1,0 +1,64 @@
+name: Quality and desktop distribution
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.11', '3.12']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      QT_QPA_PLATFORM: offscreen
+      SQUACKTS_DATA_HOME: ${{ github.workspace }}/.local/ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: |
+            requirements*.txt
+            constraints.txt
+      - name: Qt system dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libopengl0 libxkbcommon0
+      - run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
+      - run: python -m pip check
+      - run: python -m compileall -q app.py config.py data_paths.py db.py pod_schema.py schema.py service_container.py utils.py repositories services ui scripts tests
+      - run: python -m unittest discover -s tests -v
+      - run: python -m ruff check .
+      - run: python -m mypy
+
+  windows-bundle:
+    needs: checks
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            requirements*.txt
+            constraints.txt
+      - run: python -m pip install --disable-pip-version-check -r requirements-build.txt
+      - run: python -m PyInstaller --noconfirm --clean packaging/Squackts.spec
+      - run: python -m scripts.smoke_bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SquackTS-Windows-x64
+          path: dist/SquackTS/
+          if-no-files-found: error

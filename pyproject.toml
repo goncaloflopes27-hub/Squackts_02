@@ -5,7 +5,6 @@ exclude = [
   ".venv",
   "build",
   "dist",
-  "ui",
 ]
 
 [tool.ruff.lint]
@@ -20,13 +19,18 @@ line-ending = "lf"
 [tool.mypy]
 python_version = "3.11"
 files = [
+  "app.py",
   "db.py",
   "repositories",
   "schema.py",
   "service_container.py",
   "services",
   "utils.py",
+  "config.py",
+  "scripts",
+  "ui",
 ]
+explicit_package_bases = true
 check_untyped_defs = true
 warn_unused_ignores = true
 warn_redundant_casts = true
