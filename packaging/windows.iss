@@ -1,4 +1,4 @@
-; Build from the frozen Windows bundle, never from a Linux executable.
+﻿; Build from the frozen Windows bundle, never from a Linux executable.
 #ifndef AppVersion
   #error Pass /DAppVersion with the application version.
 #endif

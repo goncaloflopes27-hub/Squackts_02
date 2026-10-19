@@ -92,7 +92,7 @@ class DataRecoveryTestCase(unittest.TestCase):
             patch("config.sys.platform", "win32"),
         ):
             self.assertEqual(application_data_home(), self.root / "windows" / "Squackts")
-        self.assertEqual(AppPaths.from_home(override).db_path, override / "data" / "pod_manager.db")
+        self.assertEqual(AppPaths.from_home(override).db_path, override.resolve() / "data" / "pod_manager.db")
 
     def test_legacy_copy_preserves_source_and_committed_wal(self) -> None:
         source = self.database("checkout", legacy=True)

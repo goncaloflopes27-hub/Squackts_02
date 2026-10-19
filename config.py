@@ -18,10 +18,12 @@ def application_data_home() -> Path:
     if configured:
         return Path(configured).expanduser().resolve()
     if sys.platform == "win32":
-        return Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))) / "Squackts"
+        local = os.environ.get("LOCALAPPDATA")
+        return (Path(local) if local else Path.home() / "AppData" / "Local") / "Squackts"
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Application Support" / "Squackts"
-    return Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local" / "share"))) / "squackts"
+    xdg = os.environ.get("XDG_DATA_HOME")
+    return (Path(xdg) if xdg else Path.home() / ".local" / "share") / "squackts"
 
 
 DATA_HOME: Path = application_data_home()

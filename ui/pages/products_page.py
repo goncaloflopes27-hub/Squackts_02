@@ -73,10 +73,9 @@ class ProductsPage(QWidget):
         self.export_button = PrimaryButton("Exportar CSV")
         self.export_button.clicked.connect(self._export_csv)
         root.addWidget(
-            Toolbar(
-                self.search_input, self.type_combo, self.active_combo, self.stock_combo, self.export_button, add_button
-            )
+            Toolbar(self.search_input, self.type_combo, self.active_combo, self.stock_combo)
         )
+        root.addWidget(Toolbar(self.export_button, add_button))
 
         body = QHBoxLayout()
         body.setSpacing(SPACING.md)
