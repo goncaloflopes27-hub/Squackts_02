@@ -84,3 +84,32 @@ jobs:
           name: SquackTS-Windows-x64
           path: dist/SquackTS/
           if-no-files-found: error
+
+  installer-preview:
+    needs: windows-bundle
+    if: github.event_name == 'pull_request' && github.head_ref == 'codex/windows-installer' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_COMMIT: ${{ github.event.pull_request.head.sha }}
+      RELEASE_NUMBER: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SquackTS-Windows-Installer
+          path: release-assets
+      - name: Publish tested installer preview
+        shell: pwsh
+        run: |
+          $installer = (Get-ChildItem release-assets/SquackTS-Setup-*-x64.exe).FullName
+          $filename = Split-Path -Leaf $installer
+          $checksum = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
+          Set-Content -LiteralPath "$installer.sha256" -Value "$checksum  $filename" -Encoding ascii
+          $version = $filename -replace '^SquackTS-Setup-', '' -replace '-x64.exe$', ''
+          $tag = "v$version-rc.$env:RELEASE_NUMBER"
+          gh release create $tag $installer "$installer.sha256" --repo $env:GITHUB_REPOSITORY --target $env:RELEASE_COMMIT --prerelease --latest=false --title "SquackTS $version - Instalador Windows para teste" --notes-file packaging/RELEASE_WINDOWS.md
+          if ($LASTEXITCODE -ne 0) { throw 'Installer release publication failed.' }
