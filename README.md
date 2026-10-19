@@ -22,9 +22,18 @@ versão por registo para detetar todas as edições obsoletas nem suporte multiu
 
 ## Utilização no Windows
 
-Na distribuição compilada, extraia **a pasta completa** `SquackTS` para uma pasta
-com permissão de leitura e execute `SquackTS.exe`. Mantenha `_internal` junto do
-executável. Python não é necessário na máquina de destino.
+Use o instalador **SquackTS-Setup-0.3.0-x64.exe** em Windows 10/11 de 64 bits.
+Instala a aplicação e as dependências na conta atual, cria automaticamente atalhos
+no Ambiente de Trabalho e no menu Iniciar e permite abrir o SquackTS no fim.
+Não é necessário instalar Python, extrair pastas ou executar comandos.
+
+Para voltar a abrir, use o atalho **SquackTS**. Para atualizar, feche a aplicação
+e execute o instalador novo; os dados ficam numa pasta separada e não são apagados
+pela reinstalação ou desinstalação. O instalador atual não tem assinatura digital;
+o Windows pode apresentar um aviso de editor desconhecido.
+
+A distribuição portátil em pasta continua disponível para ensaios técnicos:
+mantenha `_internal` junto de `SquackTS.exe` e copie a pasta completa.
 
 Para desenvolvimento a partir deste repositório, instale Python **3.11 ou 3.12**
 com a opção de adicionar ao PATH e abra `abrir_squackts.bat`. O launcher cria
@@ -218,6 +227,20 @@ python -m pip install -r requirements-build.txt
 python -m PyInstaller --noconfirm --clean packaging/Squackts.spec
 python -m scripts.smoke_bundle
 ```
+
+Para gerar também o instalador, instale Inno Setup 6 no computador de build e execute:
+
+```powershell
+.\scripts\build_installer.ps1
+# Se a distribuição já foi construída e verificada:
+.\scripts\build_installer.ps1 -SkipBuild
+python -m scripts.smoke_installer dist\installer\SquackTS-Setup-0.3.0-x64.exe
+```
+
+O último comando instala/reinstala/desinstala e cria/remove os atalhos da conta;
+execute-o apenas num runner Windows descartável sem uma instalação existente.
+Verifica arranque, dados e imagens preservados. A CI produz o artefacto
+`SquackTS-Windows-Installer`, que contém o `.exe` a entregar ao utilizador.
 
 O build deve correr no sistema de destino. A distribuição em diretório inclui o
 runtime Python, plugins Qt, ícone e recursos; no Windows inclui metadados de versão.

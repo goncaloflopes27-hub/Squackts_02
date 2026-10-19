@@ -2,6 +2,7 @@ name: Quality and desktop distribution
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -57,6 +58,27 @@ jobs:
       - run: python -m pip install --disable-pip-version-check -r requirements-build.txt
       - run: python -m PyInstaller --noconfirm --clean packaging/Squackts.spec
       - run: python -m scripts.smoke_bundle
+      - name: Ensure Inno Setup compiler
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup --version=6.4.3 --yes --no-progress --limit-output
+            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed.' }
+          }
+      - name: Build Windows installer
+        shell: pwsh
+        run: ./scripts/build_installer.ps1 -SkipBuild
+      - name: Verify install, shortcuts, upgrade and uninstall
+        shell: pwsh
+        run: |
+          $installer = (Get-ChildItem dist/installer/SquackTS-Setup-*-x64.exe).FullName
+          python -m scripts.smoke_installer $installer
+          if ($LASTEXITCODE -ne 0) { throw 'Installer verification failed.' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SquackTS-Windows-Installer
+          path: dist/installer/SquackTS-Setup-*-x64.exe
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: SquackTS-Windows-x64
