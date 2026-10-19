@@ -24,12 +24,17 @@ class KPIWidget(AppCard):
         super().__init__()
         layout: QVBoxLayout = self.layout()  # type: ignore[assignment]
         top = QLabel(label)
+        top.setWordWrap(True)
         top.setStyleSheet(f"color:{COLORS.text_secondary}; font-size:12px;")
         layout.addWidget(top)
         val = QLabel(value)
+        val.setWordWrap(True)
         val.setStyleSheet("font-size: 30px; font-weight: 780; letter-spacing: 0.3px;")
         layout.addWidget(val)
-        layout.addWidget(StatPill(delta, tone))
+        hint = StatPill(delta, tone)
+        hint.setWordWrap(True)
+        hint.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        layout.addWidget(hint)
 
 
 class InlineMetric(QWidget):
@@ -152,7 +157,8 @@ class InfoRow(QWidget):
         right.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         right.setToolTip(value)
         right.setMinimumWidth(0)
-        right.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        # Long Windows paths must wrap inside the card, not widen the whole page.
+        right.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         layout.addWidget(left)
         layout.addWidget(right, 1)
@@ -174,6 +180,11 @@ class InfoGrid(AppCard):
             k = QLabel(key)
             k.setStyleSheet(f"color:{COLORS.text_secondary};")
             v = QLabel(value)
+            v.setWordWrap(True)
+            v.setTextFormat(Qt.TextFormat.PlainText)
+            v.setMinimumWidth(0)
+            v.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+            v.setToolTip(value)
             v.setStyleSheet("font-weight:700;")
             block_layout.addWidget(k)
             block_layout.addWidget(v)

@@ -81,7 +81,7 @@ class DataRecoveryTestCase(unittest.TestCase):
     def test_data_home_override_and_os_defaults(self) -> None:
         override = self.root / "custom"
         with patch.dict(os.environ, {"SQUACKTS_DATA_HOME": str(override)}):
-            self.assertEqual(application_data_home(), override)
+            self.assertEqual(application_data_home(), override.resolve())
         with (
             patch.dict(os.environ, {"XDG_DATA_HOME": str(self.root / "xdg")}, clear=True),
             patch("config.sys.platform", "linux"),

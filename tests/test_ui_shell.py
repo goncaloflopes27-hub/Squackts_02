@@ -71,7 +71,11 @@ class UiShellTests(unittest.TestCase):
                 QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
                 self.assertEqual(self.window.current_page_key, key)
                 self.assertTrue(self.window.sidebar._buttons[key].isChecked())
-                self.assertEqual(self.window.page_scrolls[key].horizontalScrollBar().maximum(), 0)
+                self.assertEqual(
+                    self.window.page_scrolls[key].horizontalScrollBar().maximum(), 0,
+                    f"{key}: minimum={self.window.page_refs[key].minimumSizeHint().width()}, "
+                    f"viewport={self.window.page_scrolls[key].viewport().width()}",
+                )
         self.assertEqual(self.window.size().width(), 1280)
         self.assertEqual(self.window.size().height(), 800)
         self.assertFalse(any("Could not parse stylesheet" in message for message in self.qt_messages), self.qt_messages)

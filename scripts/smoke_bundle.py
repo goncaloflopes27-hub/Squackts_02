@@ -7,6 +7,7 @@ import os
 import sqlite3
 import subprocess
 import sys
+from contextlib import closing
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -36,7 +37,7 @@ def smoke_bundle(executable: Path, screenshots: Path | None = None) -> None:
             database = home / "data" / "pod_manager.db"
             if not database.is_file():
                 raise RuntimeError("O executável não criou a base no diretório do utilizador")
-            with sqlite3.connect(database) as connection:
+            with closing(sqlite3.connect(database)) as connection, connection:
                 if connection.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
                     raise RuntimeError("Integridade da base inválida")
                 if attempt == 0:

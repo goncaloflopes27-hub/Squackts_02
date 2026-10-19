@@ -8,6 +8,7 @@ import os
 import sqlite3
 import subprocess
 import sys
+from contextlib import closing
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -46,7 +47,7 @@ def install(installer: Path, destination: Path, log: Path) -> None:
 
 
 def fingerprint(home: Path) -> tuple[int, int, str, str]:
-    with sqlite3.connect(home / "data" / "pod_manager.db") as connection:
+    with closing(sqlite3.connect(home / "data" / "pod_manager.db")) as connection:
         if connection.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
             raise RuntimeError("Integridade invalida depois da instalacao/atualizacao")
         count, total = connection.execute("SELECT COUNT(*), COALESCE(SUM(total_cents), 0) FROM orders").fetchone()
@@ -80,7 +81,7 @@ def smoke_installer(installer: Path) -> None:
                 [str(executable), "--demo", "--smoke-test", "--data-dir", str(home)],
                 cwd=root, env=environment, check=True, timeout=60,
             )
-            with sqlite3.connect(home / "data" / "pod_manager.db") as connection:
+            with closing(sqlite3.connect(home / "data" / "pod_manager.db")) as connection, connection:
                 connection.execute("CREATE TABLE installer_smoke (value TEXT NOT NULL)")
                 connection.execute("INSERT INTO installer_smoke VALUES ('preserved')")
             image = home / "images" / "installer-smoke.png"

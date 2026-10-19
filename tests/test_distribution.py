@@ -6,6 +6,7 @@ import sqlite3
 import subprocess
 import sys
 import unittest
+from contextlib import closing
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -23,7 +24,7 @@ class IsolatedToolsTestCase(unittest.TestCase):
             for _ in range(2):
                 result = subprocess.run(command, cwd=ROOT, env=environment, capture_output=True, text=True, check=True, timeout=30)
                 self.assertEqual(json.loads(result.stdout)["orders"], 8)
-            with sqlite3.connect(home / "data" / "pod_manager.db") as connection:
+            with closing(sqlite3.connect(home / "data" / "pod_manager.db")) as connection:
                 self.assertEqual(connection.execute("SELECT COUNT(*) FROM orders").fetchone()[0], 8)
             self.assertFalse(personal.exists())
 
