@@ -87,7 +87,7 @@ QT_QPA_PLATFORM=offscreen python -m scripts.performance --orders 10000 --ui --ou
 
 Foram capturadas e inspecionadas as seis páginas preenchidas em 1280×800, o Painel em 1600×1000, quatro editores, erro de submissão visível e pesquisa sem resultados. O perfil vazio foi exercitado. Capturas offscreen não demonstram comportamento de DPI ou integração com um desktop Windows.
 
-A distribuição verificada é uma pasta Linux com executável e dependências. O workflow `.github/workflows/quality.yml` prepara checks Linux/Windows em Python 3.11/3.12 e build/smoke Windows, mas não foi executado no GitHub nesta tarefa. Não há instalador Windows, assinatura, ensaio de atualização Windows nem prova de instalação sem Python numa máquina Windows limpa.
+A distribuição verificada na primeira estabilização era uma pasta Linux com executável e dependências; nessa etapa ainda não havia ensaio Windows nem instalador. A entrega seguinte, no [PR #5](https://github.com/goncaloflopes27-hub/Squackts_02/pull/5), acrescenta compilação Inno Setup e verificação automática em runner Windows. O workflow `.github/workflows/quality.yml` executa checks Linux/Windows em Python 3.11/3.12 e produz `SquackTS-Windows-Installer` depois de verificar instalação, atalhos, arranque, reinstalação e desinstalação com dados/imagens preservados. Consulte a execução dessa branch para o resultado observado; a definição do workflow, por si só, não é uma aprovação. Assinatura digital, DPI e ensaio num computador de utilização continuam pendentes.
 
 ## Comandos para repetir as verificações
 

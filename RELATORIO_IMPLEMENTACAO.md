@@ -22,12 +22,12 @@ Existe bloqueio de instância por perfil. As transações protegem reservas, mas
 
 Os dados ficam separados do programa. Migrações até à versão 6 criam cópia prévia e recusam versões futuras. Backups incluem SQLite consistente, imagens e checksums; o restauro valida o conteúdo e guarda uma cópia de recuperação. Não há backups agendados.
 
-As migrações foram ensaiadas em bases temporárias/sintéticas, **não numa cópia identificada da tua base real**. Windows limpo, DPI e atualização também não foram ensaiados; CI/build estão preparados, sem execução no GitHub nesta tarefa. Não há instalador nem assinatura.
+As migrações foram ensaiadas em bases temporárias/sintéticas, **não numa cópia identificada da tua base real**. A primeira estabilização foi validada em Linux. A entrega seguinte acrescenta um instalador Windows com atalhos automáticos e ensaio de instalação/reinstalação/desinstalação em runner Windows; os resultados estão no [PR de distribuição](https://github.com/goncaloflopes27-hub/Squackts_02/pull/5). O ensaio num computador real, DPI e assinatura digital continuam pendentes.
 
 ## Evidência e próximos passos
 
 Em 20 de outubro de 2026 passaram 114 testes, Ruff e mypy (65 ficheiros). O executável Linux foi anteriormente aberto duas vezes com persistência. A [evidência técnica](docs/VALIDACAO.md) lista os três testes iniciais alterados, medições, comandos e limites.
 
-Prioridade comercial: recebimentos/sinal, prazo e levantamento, juntamente com IVA explícito. Depois, controlo de versão e pesquisa otimizada; antes de fechar a distribuição, ensaio com cópia dos dados reais e Windows. As políticas de sinal, entrega a crédito e regime fiscal ainda precisam de definição. Integrações, expedições parciais e colaboração entre máquinas continuam por implementar.
+Prioridade comercial: recebimentos/sinal, prazo e levantamento, juntamente com IVA explícito. Depois, controlo de versão e pesquisa otimizada; antes de fechar a validação operacional, ensaio com cópia dos dados reais e no computador de utilização. As políticas de sinal, entrega a crédito e regime fiscal ainda precisam de definição. Integrações, expedições parciais e colaboração entre máquinas continuam por implementar.
 
 **Ambiente cloud:** a consulta atual devolve a configuração publicada, com script de instalação e instruções de arranque, sem rascunho pendente. Podem ser revistos nas definições do ambiente. Um snapshot com estes novos commits exige nova publicação; essa publicação e a restauração numa tarefa nova não foram verificadas. Publicar o ambiente não faz push para o GitHub. O [README](README.md) contém os procedimentos de utilização e recuperação.
