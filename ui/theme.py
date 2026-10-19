@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -44,13 +45,31 @@ class SpacingTokens:
     xxl: int = 40
 
 
+@dataclass(frozen=True)
+class TypographyTokens:
+    caption: int = 11
+    body: int = 13
+    section: int = 16
+    title: int = 26
+    metric: int = 30
+
+
 COLORS = ColorTokens()
 RADIUS = RadiusTokens()
 SPACING = SpacingTokens()
+TYPE = TypographyTokens()
+
+
+def translucent(color: str, alpha: int = 24) -> str:
+    """Qt supports rgba(); eight-digit CSS hex has a different channel order."""
+    return f"rgba({int(color[1:3], 16)}, {int(color[3:5], 16)}, {int(color[5:7], 16)}, {alpha})"
 
 
 def app_stylesheet() -> str:
     c = COLORS
+    icons = Path(__file__).resolve().parent / "icons"
+    arrow = (icons / "chevron-down.svg").as_posix()
+    check = (icons / "check.svg").as_posix()
     return f"""
     QWidget {{
         color: {c.text_primary};
@@ -88,21 +107,21 @@ def app_stylesheet() -> str:
     QScrollArea > QWidget > QWidget {{
         background: transparent;
     }}
-    QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox, QDoubleSpinBox {{
+    QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit, QDateTimeEdit {{
         background: {c.surface_alt};
         border: 1px solid {c.border};
         border-radius: {RADIUS.md}px;
         padding: 9px 12px;
         color: {c.text_primary};
         selection-background-color: {c.primary};
-        min-height: 40px;
+        min-height: 20px;
     }}
     QTextEdit, QPlainTextEdit {{
-        min-height: 92px;
+        min-height: 60px;
         padding-top: 10px;
     }}
-    QLineEdit:hover, QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover, QTextEdit:hover {{ border: 1px solid {c.border_strong}; }}
-    QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QTextEdit:focus {{
+    QLineEdit:hover, QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover, QTextEdit:hover, QDateEdit:hover, QDateTimeEdit:hover {{ border: 1px solid {c.border_strong}; }}
+    QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QTextEdit:focus, QDateEdit:focus, QDateTimeEdit:focus {{
         border: 1px solid {c.primary};
         background: {c.surface_elevated};
     }}
@@ -112,12 +131,9 @@ def app_stylesheet() -> str:
         margin-right: 6px;
     }}
     QComboBox::down-arrow {{
-        image: none;
-        border-left: 5px solid transparent;
-        border-right: 5px solid transparent;
-        border-top: 6px solid {c.text_secondary};
-        width: 0px;
-        height: 0px;
+        image: url("{arrow}");
+        width: 12px;
+        height: 12px;
     }}
     QComboBox QAbstractItemView {{
         border: 1px solid {c.border_strong};
@@ -125,7 +141,7 @@ def app_stylesheet() -> str:
         selection-background-color: {c.surface_elevated};
         outline: 0;
     }}
-    QLineEdit:disabled, QTextEdit:disabled, QComboBox:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled {{
+    QLineEdit:disabled, QTextEdit:disabled, QComboBox:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QDateEdit:disabled, QDateTimeEdit:disabled {{
         color:{c.text_muted};
         background:{c.surface};
     }}
@@ -163,17 +179,22 @@ def app_stylesheet() -> str:
         border-right: 1px solid {c.border};
         padding: 12px 10px;
         font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.4px;
     }}
     QHeaderView::section:last {{ border-right: none; }}
     QPushButton {{
-        min-height: 40px;
+        min-height: 20px;
     }}
-    QPushButton:disabled {{ opacity: 0.7; }}
-    QPushButton:focus, QToolButton:focus, QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QTextEdit:focus {{
-        outline: none;
-    }}
+    QPushButton:focus, QToolButton:focus {{ border: 1px solid {c.focus_ring}; }}
+    QTableWidget:focus {{ border: 1px solid {c.focus_ring}; }}
+    QCheckBox {{ spacing: 9px; padding: 5px 0; }}
+    QCheckBox::indicator {{ width: 18px; height: 18px; border: 1px solid {c.border_strong}; border-radius: 5px; background: {c.surface_alt}; }}
+    QCheckBox::indicator:checked {{ image:url("{check}"); background: {c.primary}; border: 1px solid {c.focus_ring}; }}
+    QCheckBox:focus {{ color: {c.focus_ring}; }}
+    QMenu {{ background: {c.surface_elevated}; border: 1px solid {c.border_strong}; padding: 6px; }}
+    QMenu::item {{ padding: 8px 18px; border-radius: 6px; }}
+    QMenu::item:selected {{ background: {c.overlay_soft}; }}
+    QCalendarWidget QWidget {{ background:{c.surface_alt}; color:{c.text_primary}; }}
+    QCalendarWidget QAbstractItemView {{ background:{c.surface}; color:{c.text_primary}; selection-background-color:{c.primary}; }}
     QScrollBar:vertical {{
         background: {c.surface};
         width: 10px;

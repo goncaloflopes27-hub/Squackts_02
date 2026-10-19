@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from sqlite3 import Row
-from typing import Callable
+from collections.abc import Callable
+from typing import Any
 
-from PySide6.QtWidgets import QHBoxLayout, QTableWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QTableWidgetItem, QVBoxLayout, QWidget
 
 from services.production_service import ProductionService
 from ui.components import (
+    ActivityList,
     ConfirmationDialog,
     DataTable,
     DetailPanel,
@@ -16,169 +18,203 @@ from ui.components import (
     PanelHeader,
     PrimaryButton,
     SearchInput,
-    SegmentedControl,
-    StatusBadge,
+    SecondaryButton,
     Toolbar,
     show_toast,
 )
 from ui.theme import SPACING
-from utils import format_currency
 
 
 class ProductionPage(QWidget):
-    def __init__(self, service: ProductionService) -> None:
+    navigate_requested = Signal(str, str)
+
+    def __init__(self, service: ProductionService, inventory_service: Any = None) -> None:
         super().__init__()
         self.service = service
-        self.queue: list[Row] = []
-        self.queue_all: list[Row] = []
+        self.inventory_service = inventory_service
+        self.queue: list[dict[str, Any]] = []
         self.selected_order_id: int | None = None
-        self.current_filter = "todas"
         self.search_text = ""
-
+        self._page_size = 50
+        self._page_offset = 0
+        self._total_results = 0
         root = QVBoxLayout(self)
         root.setContentsMargins(SPACING.lg, SPACING.lg, SPACING.lg, SPACING.lg)
         root.setSpacing(SPACING.md)
-        root.addWidget(PageHeader("Produção", "Fila operacional com transições seguras de estado."))
-
-        self.segment = SegmentedControl(["todas", "confirmada", "paga", "em_producao", "pronta_envio"])
-        self.segment.selection_changed.connect(self._set_filter)
-        self.search_input = SearchInput("Pesquisar pedido, cliente, item ou estado...")
+        root.addWidget(PageHeader("Produção", "Uma linha por encomenda. Arte e qualidade são verificadas por item."))
+        self.search_input = SearchInput("Pesquisar encomenda, cliente ou item…")
         self.search_input.textChanged.connect(self.apply_search)
-        root.addWidget(Toolbar(self.search_input, self.segment))
-
+        self.mark_prod = PrimaryButton("Iniciar encomenda")
+        self.mark_prod.clicked.connect(
+            lambda: self._change(self.service.mark_producing, "Iniciar a produção da encomenda inteira?")
+        )
+        self.mark_qc = PrimaryButton("Concluir produção e qualidade")
+        self.mark_qc.clicked.connect(
+            lambda: self._change(
+                self.service.mark_produced,
+                "Concluir a preparação de todos os itens sem arte pendente e marcar a encomenda pronta para envio?",
+            )
+        )
+        self.mark_ship = SecondaryButton("Ver expedição")
+        self.mark_ship.clicked.connect(lambda: self.navigate_requested.emit("orders", "pronta_envio"))
+        root.addWidget(Toolbar(self.search_input, self.mark_prod, self.mark_qc, self.mark_ship))
         body = QHBoxLayout()
-        body.setSpacing(SPACING.md)
-
-        left = QVBoxLayout()
-        left.setContentsMargins(0, 0, 0, 0)
-
-        actions = QHBoxLayout()
-        actions.addWidget(PanelHeader("Fila real", "Ações por encomenda selecionada"))
-        actions.addStretch(1)
-        self.mark_prod = PrimaryButton("Marcar produção")
-        self.mark_prod.clicked.connect(self._mark_producing)
-        self.mark_qc = PrimaryButton("Marcar produzido")
-        self.mark_qc.clicked.connect(self._mark_produced)
-        self.mark_ship = PrimaryButton("Pronto envio")
-        self.mark_ship.clicked.connect(self._mark_ready)
-        actions.addWidget(self.mark_prod)
-        actions.addWidget(self.mark_qc)
-        actions.addWidget(self.mark_ship)
-        actions_widget = QWidget()
-        actions_widget.setLayout(actions)
-        left.addWidget(actions_widget)
-
-        self.table = DataTable(0, 8)
-        self.table.setHorizontalHeaderLabels(["Pedido", "Cliente", "Item", "Qtd", "Tipo", "Estado", "Stock deduzido", "Devolvido"])
+        self.table = DataTable(0, 6)
+        self.table.setHorizontalHeaderLabels(["Encomenda", "Cliente", "Itens", "Unidades", "Trabalho", "Estado"])
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.itemSelectionChanged.connect(self._on_selection)
+        left = QVBoxLayout()
         left.addWidget(self.table)
-
-        self.empty = EmptyState("Sem itens de produção", "Não há itens para o filtro/pesquisa atual.")
+        self.empty = EmptyState("Fila em dia", "Não há encomendas para preparar ou produzir.")
         left.addWidget(self.empty)
-
+        self.previous_button = SecondaryButton("Anterior")
+        self.next_button = SecondaryButton("Seguinte")
+        self.page_label = QLabel()
+        self.previous_button.clicked.connect(lambda: self._change_page(-1))
+        self.next_button.clicked.connect(lambda: self._change_page(1))
+        left.addWidget(Toolbar(self.previous_button, self.page_label, self.next_button))
         left_widget = QWidget()
         left_widget.setLayout(left)
         body.addWidget(left_widget, stretch=3)
-
-        self.detail = DetailPanel("Detalhe da seleção")
+        self.detail = DetailPanel("Encomenda selecionada")
         body.addWidget(self.detail, stretch=2)
-
         root.addLayout(body)
         self.refresh()
 
-    def _set_filter(self, value: str) -> None:
-        self.current_filter = value
-        self.segment.set_value(value)
-        self.refresh()
-
     def refresh(self) -> None:
-        self.queue_all = self.service.get_production_queue(self.current_filter)
-        self.queue = self._filtered_queue()
+        selected_id = self.selected_order_id
+        scroll = self.table.verticalScrollBar().value()
+        groups: dict[int, dict[str, Any]] = {}
+        try:
+            result = self.service.search_queue(search=self.search_text, limit=self._page_size, offset=self._page_offset)
+            rows = result.rows
+            self._total_results = result.total
+            if result.total and self._page_offset >= result.total:
+                self._page_offset = ((result.total - 1) // self._page_size) * self._page_size
+                rows = self.service.search_queue(search=self.search_text, limit=self._page_size, offset=self._page_offset).rows
+        except (ValueError, OSError) as exc:
+            show_toast(self, str(exc), "danger")
+            rows = []
+        for raw in rows:
+            row = dict(raw)
+            order_id = int(row["order_id"])
+            group = groups.setdefault(order_id, {**row, "items": [], "units": 0})
+            group["items"].append(row)
+            group["units"] += int(row["quantidade"])
+        self.queue = list(groups.values())
+        self.table.blockSignals(True)
         self.table.setRowCount(len(self.queue))
-        for i, row in enumerate(self.queue):
+        for index, order in enumerate(self.queue):
+            reserved = sum(int(item.get("reserved_quantity", 0)) for item in order["items"])
+            production = sum(int(item.get("production_quantity", 0)) for item in order["items"])
             values = [
-                str(row["numero"]),
-                str(row["client_nome"]),
-                str(row["nome_snapshot"]),
-                str(row["quantidade"]),
-                str(row["tipo_producao_snapshot"]),
-                str(row["estado"]),
-                "Sim" if int(row["stock_deducted"]) else "Não",
-                "Sim" if int(row["stock_returned"]) else "Não",
+                order["numero"],
+                order["client_nome"],
+                ", ".join(str(item["nome_snapshot"]) for item in order["items"]),
+                order["units"],
+                f"{reserved} separar · {production} produzir",
+                str(order["estado"]).replace("_", " ").capitalize(),
             ]
-            for j, value in enumerate(values):
-                self.table.setItem(i, j, QTableWidgetItem(value))
-
-        is_empty = len(self.queue) == 0
-        self.table.setVisible(not is_empty)
-        self.empty.setVisible(is_empty)
-        if is_empty:
+            for column, value in enumerate(values):
+                self.table.setItem(index, column, QTableWidgetItem(str(value)))
+        self.table.blockSignals(False)
+        self.previous_button.setEnabled(self._page_offset > 0)
+        self.next_button.setEnabled(self._page_offset + self._page_size < self._total_results)
+        first = self._page_offset + 1 if self._total_results else 0
+        self.page_label.setText(
+            f"{first}–{min(self._page_offset + len(self.queue), self._total_results)} de {self._total_results} encomendas"
+        )
+        self.table.setVisible(bool(self.queue))
+        self.empty.setVisible(not self.queue)
+        if not self.queue:
             self.selected_order_id = None
             self._render_detail(None)
-            self._update_action_states(None)
+            self.mark_prod.setEnabled(False)
+            self.mark_qc.setEnabled(False)
             return
-        self.table.selectRow(0)
+        target = next((i for i, order in enumerate(self.queue) if int(order["order_id"]) == selected_id), 0)
+        self.table.blockSignals(True)
+        self.table.selectRow(target)
+        self.table.blockSignals(False)
+        self.table.verticalScrollBar().setValue(scroll)
+        self._on_selection()
 
     def _on_selection(self) -> None:
         selected = self.table.selectedItems()
-        if not selected:
-            self.selected_order_id = None
-            self._render_detail(None)
-            self._update_action_states(None)
+        if not selected or selected[0].row() >= len(self.queue):
             return
-        row_index = selected[0].row()
-        if row_index >= len(self.queue):
-            return
-        row = self.queue[row_index]
-        self.selected_order_id = int(row["order_id"])
-        self._render_detail(row)
-        self._update_action_states(str(row["estado"]))
+        order = self.queue[selected[0].row()]
+        self.selected_order_id = int(order["order_id"])
+        state = str(order["estado"])
+        tasks = self.inventory_service.list_tasks(int(order["order_id"])) if self.inventory_service else []
+        needs_production = bool(tasks) or any(int(item.get("production_quantity", 0)) > 0 for item in order["items"])
+        self.mark_prod.setEnabled(state == "confirmada" and needs_production)
+        self.mark_qc.setEnabled(state == "em_producao" or (state == "confirmada" and not needs_production))
+        self._render_detail(order)
 
-    def _render_detail(self, row: Row | None) -> None:
+    def _render_detail(self, order: dict[str, Any] | None) -> None:
         self.detail.clear_content()
-
-        if row is None:
-            self.detail.add_content_widget(InfoRow("Estado", "Sem seleção"))
+        if order is None:
+            self.detail.add_content_widget(InfoRow("Seleção", "Sem encomenda"))
             return
+        self.detail.add_content_widget(PanelHeader(str(order["numero"]), str(order["client_nome"])))
+        self.detail.add_content_widget(InfoRow("Âmbito das ações", "Toda a encomenda selecionada"))
+        self.detail.add_content_widget(InfoRow("Estado", str(order["estado"]).replace("_", " ").capitalize()))
+        self.detail.add_content_widget(InfoRow("Data prevista", str(order.get("data_prevista", "")) or "Sem prazo"))
+        self.detail.add_content_widget(
+            ActivityList(
+                "Itens",
+                [
+                    (
+                        f"{item['quantidade']} unidades",
+                        f"{item['nome_snapshot']} · {item.get('reserved_quantity', 0)} reservadas · {item.get('production_quantity', 0)} por produzir",
+                    )
+                    for item in order["items"]
+                ],
+            )
+        )
+        if self.inventory_service:
+            for task in self.inventory_service.list_tasks(int(order["order_id"])):
+                task = dict(task)
+                item_id = int(task["order_item_id"])
+                self.detail.add_content_widget(
+                    PanelHeader(str(task["nome_snapshot"]), f"{task['quantity']} unidades · {task['status']}")
+                )
+                if str(task.get("personalization", "")):
+                    self.detail.add_content_widget(InfoRow("Personalização", str(task["personalization"])))
+                if int(task.get("art_required", 0)):
+                    self.detail.add_content_widget(
+                        InfoRow("Arte", "Aprovada" if int(task["art_approved"]) else "Por aprovar")
+                    )
+                    art = SecondaryButton("Aprovar arte deste item")
+                    art.setEnabled(not bool(int(task["art_approved"])))
+                    art.clicked.connect(lambda _checked=False, item=item_id: self._task_action(item, "art"))
+                    self.detail.add_content_widget(art)
+                complete = SecondaryButton("Concluir item e aprovar qualidade")
+                complete.setEnabled(str(task["status"]) not in {"completed", "concluida", "done"})
+                complete.clicked.connect(lambda _checked=False, item=item_id: self._task_action(item, "complete"))
+                self.detail.add_content_widget(complete)
 
-        self.detail.add_content_widget(PanelHeader(str(row["numero"]), str(row["client_nome"])))
-        self.detail.add_content_widget(InfoRow("Estado", str(row["estado"])))
-        self.detail.add_content_widget(InfoRow("Item", str(row["nome_snapshot"])))
-        self.detail.add_content_widget(InfoRow("Quantidade", str(row["quantidade"])))
-        self.detail.add_content_widget(InfoRow("Preço unit", format_currency(row["preco_unit"])))
-        self.detail.add_content_widget(InfoRow("Atualizado", str(row["updated_at"])))
-
-        tone = "info"
-        state = str(row["estado"])
-        if state == "em_producao":
-            tone = "queued"
-        elif state in {"pronta_envio", "expedida"}:
-            tone = "ok"
-        elif state == "confirmada":
-            tone = "warning"
-        self.detail.add_content_widget(StatusBadge(f"Estado: {state}", tone))
-
-    def _update_action_states(self, state: str | None) -> None:
-        self.mark_prod.setEnabled(state in {"confirmada", "paga"})
-        self.mark_qc.setEnabled(state == "em_producao")
-        self.mark_ship.setEnabled(state == "pronta_envio")
-
-    def _mark_producing(self) -> None:
-        self._confirm_and_change("em_producao", self.service.mark_producing)
-
-    def _mark_produced(self) -> None:
-        self._confirm_and_change("pronta_envio", self.service.mark_produced)
-
-    def _mark_ready(self) -> None:
-        self._confirm_and_change("expedida", self.service.mark_ready_to_ship)
-
-    def _confirm_and_change(self, new_state: str, action: Callable[[int], None]) -> None:
-        if self.selected_order_id is None:
-            show_toast(self, "Selecione uma encomenda", "warning")
+    def _task_action(self, item_id: int, action: str) -> None:
+        label = (
+            "Aprovar a arte selecionada?"
+            if action == "art"
+            else "Confirmar que este item está produzido e passou o controlo de qualidade?"
+        )
+        if not ConfirmationDialog("Confirmar item", label, self).exec():
             return
-        confirm = ConfirmationDialog("Confirmar transição", f"Pretende mudar o estado para '{new_state}'?", self)
-        if not confirm.exec():
+        try:
+            if action == "art":
+                self.inventory_service.approve_art(item_id)
+            else:
+                self.inventory_service.complete_task(item_id, qc_passed=True)
+        except ValueError as exc:
+            show_toast(self, str(exc), "warning")
+            return
+        self.refresh()
+
+    def _change(self, action: Callable[[int], None], message: str) -> None:
+        if self.selected_order_id is None or not ConfirmationDialog("Confirmar encomenda", message, self).exec():
             return
         try:
             action(self.selected_order_id)
@@ -186,18 +222,13 @@ class ProductionPage(QWidget):
             show_toast(self, str(exc), "warning")
             return
         self.refresh()
-        show_toast(self, f"Estado -> {new_state}", "ok")
+        show_toast(self, "Encomenda atualizada", "ok")
 
     def apply_search(self, text: str) -> None:
         self.search_text = text.strip().lower()
+        self._page_offset = 0
         self.refresh()
 
-    def _filtered_queue(self) -> list[Row]:
-        if not self.search_text:
-            return list(self.queue_all)
-        result: list[Row] = []
-        for row in self.queue_all:
-            haystack = f"{row['estado']} {row['numero']} {row['client_nome']} {row['nome_snapshot']}".lower()
-            if self.search_text in haystack:
-                result.append(row)
-        return result
+    def _change_page(self, direction: int) -> None:
+        self._page_offset = max(0, self._page_offset + direction * self._page_size)
+        self.refresh()

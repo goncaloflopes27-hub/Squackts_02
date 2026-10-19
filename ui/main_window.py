@@ -1,24 +1,34 @@
 from __future__ import annotations
 
-from typing import Dict
+from collections.abc import Callable
+from functools import partial
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QStackedWidget, QVBoxLayout, QWidget
+from PySide6.QtCore import QObject, Qt, QTimer, Signal
+from PySide6.QtGui import QCloseEvent, QKeySequence, QResizeEvent, QShortcut
+from PySide6.QtWidgets import (
+    QApplication,
+    QFrame,
+    QHBoxLayout,
+    QMainWindow,
+    QScrollArea,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 from config import APP_NAME, WINDOW_MIN_HEIGHT, WINDOW_MIN_WIDTH
 from service_container import ServiceContainer
 from ui.animations import fade_in
-from ui.pages import (
-    ClientsPage,
-    DashboardPage,
-    OrdersPage,
-    ProductionPage,
-    ProductsPage,
-    SystemPage,
-)
-from ui.sidebar import Sidebar
+from ui.components import SearchInput, show_toast
+from ui.pages import ClientsPage, DashboardPage, OrdersPage, ProductionPage, ProductsPage, SystemPage
+from ui.preferences import LocalPreferences, PreferencesDialog
+from ui.sidebar import PAGES, Sidebar
 from ui.theme import app_stylesheet
 from ui.topbar import TopBar
+
+
+class _EventBridge(QObject):
+    changed = Signal(str)
 
 
 class MainWindow(QMainWindow):
@@ -28,129 +38,233 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(APP_NAME)
         self.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
         self.setStyleSheet(app_stylesheet())
-
+        self.current_page_key = "dashboard"
+        self._searches: dict[str, str] = {}
+        self._dirty: set[str] = set()
+        self._manual_compact: bool | None = None
+        self._unsubscribe: Callable[[], None] | None = None
+        self._closing = False
+        self.preferences = getattr(container, "preferences", None) or LocalPreferences(str(container.db_path.parent / "ui.ini"))
         root = QWidget()
         root.setObjectName("MainFrame")
         self.setCentralWidget(root)
-
         layout = QHBoxLayout(root)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-
         self.sidebar = Sidebar(self.navigate)
         layout.addWidget(self.sidebar)
-
         content = QWidget()
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(0)
         self.topbar = TopBar()
         self.topbar.search_changed.connect(self._handle_global_search)
+        self.topbar.menu_requested.connect(self._toggle_sidebar)
+        self.topbar.alerts_requested.connect(self._open_alerts)
+        self.topbar.preferences_requested.connect(self.open_preferences)
         content_layout.addWidget(self.topbar)
-
         self.stack = QStackedWidget()
-        self.stack.setStyleSheet(
-            f"QStackedWidget {{background: transparent;}}"
-        )
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.addWidget(self.stack, stretch=1)
-        layout.addWidget(content, stretch=1)
-
-        self.page_map: Dict[str, int] = {}
-        self.page_refs: Dict[str, QWidget] = {}
+        content_layout.addWidget(self.stack, 1)
+        layout.addWidget(content, 1)
+        self.page_map: dict[str, int] = {}
+        self.page_refs: dict[str, QWidget] = {}
+        self.page_scrolls: dict[str, QScrollArea] = {}
         self._register_pages()
+        self._refresh_timer = QTimer(self)
+        self._refresh_timer.setSingleShot(True)
+        self._refresh_timer.timeout.connect(self._flush_invalidations)
+        self._event_bridge = _EventBridge(self)
+        self._event_bridge.changed.connect(self.invalidate_pages, Qt.ConnectionType.QueuedConnection)
+        events = getattr(container, "events", None)
+        if events is not None:
+            self._unsubscribe = events.subscribe(self._event_bridge.changed.emit)
+        self._install_shortcuts()
+        self._apply_preferences()
         self.navigate("dashboard")
 
     def _register_pages(self) -> None:
+        images = getattr(self.container, "images", None)
         pages = {
             "dashboard": DashboardPage(self.container.dashboard),
-            "orders": OrdersPage(self.container.orders, self.container.clients, self.container.products),
-            "products": ProductsPage(self.container.products),
-            "clients": ClientsPage(self.container.clients),
-            "production": ProductionPage(self.container.production),
+            "orders": OrdersPage(self.container.orders, self.container.clients, self.container.products, image_service=images),
+            "products": ProductsPage(self.container.products, image_service=images),
+            "clients": ClientsPage(self.container.clients, self.container.orders, self.container.products, image_service=images),
+            "production": ProductionPage(self.container.production, inventory_service=getattr(self.container, "inventory", None)),
             "system": SystemPage(self.container),
         }
         for key, page in pages.items():
-            index = self.stack.addWidget(page)
-            self.page_map[key] = index
+            # Only the shell owns contextual text search; page filters remain local.
+            search = getattr(page, "search_input", None)
+            if isinstance(search, SearchInput):
+                search.hide()
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.Shape.NoFrame)
+            scroll.setStyleSheet("QScrollArea {border:none; background:transparent;}")
+            scroll.setWidget(page)
+            self.page_map[key] = self.stack.addWidget(scroll)
             self.page_refs[key] = page
+            self.page_scrolls[key] = scroll
+        for page in pages.values():
+            navigation = getattr(page, "navigate_requested", None)
+            if navigation is not None:
+                navigation.connect(self.navigate_to_results)
 
     def navigate(self, page_key: str) -> None:
-        index = self.page_map.get(page_key)
-        if index is None:
+        if page_key not in self.page_map:
             return
-        self.stack.setCurrentIndex(index)
+        previous = self.current_page_key
+        self.current_page_key = page_key
+        self.stack.setCurrentIndex(self.page_map[page_key])
+        self.sidebar.set_current(page_key)
         self._sync_topbar(page_key)
-        current = self.stack.currentWidget()
-        if current is not None:
-            current.setAttribute(Qt.WA_TranslucentBackground, False)
-            fade_in(current)
+        if page_key in self._dirty or previous != page_key:
+            self._refresh_page(page_key)
+        if previous != page_key:
+            fade_in(self.page_refs[page_key])
+
+    def navigate_to_results(self, page_key: str, query: str = "") -> None:
+        self.navigate(page_key)
+        page = self.page_refs.get(page_key)
+        state_filter = getattr(page, "_set_status_filter", None)
+        if query and callable(state_filter):
+            self.topbar.search.clear()
+            state_filter(query)
+        elif query:
+            self.topbar.search.setText(query)
 
     def _sync_topbar(self, page_key: str) -> None:
-        page = self.page_refs.get(page_key)
-        if page_key == "dashboard":
-            self.topbar.set_context(
-                title="Painel",
-                subtitle="Resumo operacional em tempo real",
-                search_placeholder="Pesquisar no dashboard...",
-                primary_action_label="Atualizar",
-                primary_action=getattr(page, "refresh", None),
-            )
-            return
-        if page_key == "orders":
-            self.topbar.set_context(
-                title="Encomendas",
-                subtitle="Operação comercial e logística",
-                search_placeholder="Pesquisar por número, cliente ou tracking...",
-                primary_action_label="Nova encomenda",
-                primary_action=getattr(page, "_open_create", None),
-                secondary_action_label="Atualizar",
-                secondary_action=getattr(page, "refresh", None),
-            )
-            return
-        if page_key == "products":
-            self.topbar.set_context(
-                title="Catálogo",
-                subtitle="Produtos, margens e produção",
-                search_placeholder="Pesquisar por nome ou SKU...",
-                primary_action_label="Novo produto",
-                primary_action=getattr(page, "_open_create", None),
-                secondary_action_label="Atualizar",
-                secondary_action=getattr(page, "refresh", None),
-            )
-            return
-        if page_key == "clients":
-            self.topbar.set_context(
-                title="Clientes",
-                subtitle="Gestão comercial e relacionamento",
-                search_placeholder="Pesquisar por nome, email ou telefone...",
-                primary_action_label="Novo cliente",
-                primary_action=getattr(page, "_open_create", None),
-                secondary_action_label="Atualizar",
-                secondary_action=getattr(page, "refresh", None),
-            )
-            return
-        if page_key == "production":
-            self.topbar.set_context(
-                title="Produção",
-                subtitle="Fila e estados de execução",
-                search_placeholder="Pesquisar por estado, pedido ou cliente...",
-                primary_action_label="Atualizar fila",
-                primary_action=getattr(page, "refresh", None),
-            )
-            return
+        page = self.page_refs[page_key]
+        contexts = {
+            "dashboard": ("Painel", "Prioridades e resultados", "Pesquisar encomendas recentes…", "Atualizar", None),
+            "orders": ("Encomendas", "Da confirmação à entrega", "Pesquisar número, cliente ou tracking…", "Nova encomenda", "_open_create"),
+            "products": ("Catálogo", "Produtos e disponibilidade", "Pesquisar produto ou SKU…", "Novo produto", "_open_create"),
+            "clients": ("Clientes", "Contactos e relacionamento", "Pesquisar nome, email ou telefone…", "Novo cliente", "_open_create"),
+            "production": ("Produção", "Trabalho a executar", "Pesquisar encomenda, cliente ou item…", "Atualizar fila", None),
+            "system": ("Sistema", "Diagnóstico e recuperação", "Pesquisar eventos…", "Atualizar", None),
+        }
+        title, subtitle, placeholder, primary_label, method = contexts[page_key]
         self.topbar.set_context(
-            title="Sistema",
-            subtitle="Backups, logs e diagnóstico",
-            search_placeholder="Pesquisar eventos...",
-            primary_action_label="Atualizar",
-            primary_action=getattr(page, "_refresh_logs", None),
+            title=title, subtitle=subtitle, search_placeholder=placeholder,
+            primary_action_label=primary_label,
+            primary_action=getattr(page, method, None) if method else self.refresh_current,
+            secondary_action_label="Atualizar" if method else None,
+            secondary_action=self.refresh_current if method else None,
+            search_text=self._searches.get(page_key, ""),
+            search_enabled=callable(getattr(page, "apply_search", None)),
         )
 
     def _handle_global_search(self, text: str) -> None:
-        current = self.stack.currentWidget()
-        if current is None:
+        key = self.current_page_key
+        self._searches[key] = text
+        search = getattr(self.page_refs[key], "apply_search", None)
+        if callable(search):
+            try:
+                search(text)
+            except Exception as exc:
+                show_toast(self, f"Não foi possível pesquisar: {exc}", "danger")
+
+    def invalidate_pages(self, *topics: str) -> None:
+        if self._closing:
             return
-        apply_search = getattr(current, "apply_search", None)
-        if callable(apply_search):
-            apply_search(text)
+        dependencies = {
+            "orders": {"orders", "dashboard", "products", "production", "clients", "system"},
+            "products": {"products", "dashboard", "orders", "production", "system"},
+            "clients": {"clients", "orders", "dashboard", "system"},
+            "production": {"production", "orders", "products", "dashboard", "system"},
+            "inventory": {"production", "orders", "products", "dashboard", "system"},
+            "settings": {"system"},
+        }
+        for topic in topics or ("all",):
+            self._dirty.update(self.page_refs if topic == "all" else dependencies.get(topic, {topic}))
+        if hasattr(self, "_refresh_timer"):
+            self._refresh_timer.start(0)
+
+    def _flush_invalidations(self) -> None:
+        if QApplication.activeModalWidget() is not None:
+            self._refresh_timer.start(150)
+            return
+        if self.current_page_key in self._dirty:
+            self._refresh_page(self.current_page_key)
+
+    def refresh_current(self) -> None:
+        self._refresh_page(self.current_page_key)
+
+    def _refresh_page(self, key: str) -> None:
+        page = self.page_refs[key]
+        refresh = getattr(page, "refresh", None) or getattr(page, "_refresh_logs", None)
+        if callable(refresh):
+            scroll = self.page_scrolls[key]
+            position = scroll.verticalScrollBar().value()
+            try:
+                refresh()
+                self._dirty.discard(key)
+                scroll.verticalScrollBar().setValue(position)
+            except Exception as exc:
+                self._dirty.add(key)
+                show_toast(self, f"Não foi possível atualizar esta página: {exc}", "danger")
+
+    def _open_alerts(self) -> None:
+        self.navigate("dashboard")
+        self._refresh_page("dashboard")
+        self.page_scrolls["dashboard"].verticalScrollBar().setValue(0)
+
+    def open_preferences(self) -> None:
+        dialog = PreferencesDialog(self.preferences, self)
+        dialog.saved.connect(self._apply_preferences)
+        dialog.exec()
+
+    def _apply_preferences(self) -> None:
+        reduced = self.preferences.get("ui.reduce_motion", "0") == "1"
+        self.setProperty("reduceMotion", reduced)
+        app = QApplication.instance()
+        if app:
+            app.setProperty("reduceMotion", reduced)
+        self._manual_compact = None
+        self._apply_responsive()
+
+    def _toggle_sidebar(self) -> None:
+        self._manual_compact = not self.sidebar._compact
+        self._apply_responsive()
+
+    def _apply_responsive(self) -> None:
+        compact = self.preferences.get("ui.compact_sidebar", "0") == "1" or self.width() < 1480
+        self.sidebar.set_compact(compact if self._manual_compact is None else self._manual_compact)
+        self.topbar.set_compact(self.width() < 1480)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        if hasattr(self, "preferences") and hasattr(self, "topbar"):
+            self._apply_responsive()
+
+    def _install_shortcuts(self) -> None:
+        shortcuts: list[tuple[str, Callable[[], None]]] = [
+            ("Ctrl+K", self._focus_search), ("Ctrl+F", self._focus_search),
+            ("F5", self.refresh_current), ("Ctrl+,", self.open_preferences),
+            ("Ctrl+B", self._toggle_sidebar), ("Ctrl+N", self._create_current),
+        ]
+        for number, (key, _label) in enumerate(PAGES, start=1):
+            shortcuts.append((f"Alt+{number}", partial(self.navigate, key)))
+        self._shortcuts = []
+        for sequence, callback in shortcuts:
+            shortcut = QShortcut(QKeySequence(sequence), self)
+            shortcut.activated.connect(callback)
+            self._shortcuts.append(shortcut)
+
+    def _focus_search(self) -> None:
+        if self.topbar.search.isEnabled():
+            self.topbar.search.setFocus(Qt.FocusReason.ShortcutFocusReason)
+            self.topbar.search.selectAll()
+
+    def _create_current(self) -> None:
+        create = getattr(self.page_refs[self.current_page_key], "_open_create", None)
+        if callable(create):
+            create()
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        self._closing = True
+        if self._unsubscribe:
+            self._unsubscribe()
+            self._unsubscribe = None
+        self._refresh_timer.stop()
+        super().closeEvent(event)

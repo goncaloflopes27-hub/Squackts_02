@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import cast
 
-from PySide6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, QParallelAnimationGroup
-from PySide6.QtWidgets import QGraphicsOpacityEffect, QWidget
+from PySide6.QtCore import QEasingCurve, QParallelAnimationGroup, QPropertyAnimation, QTimer
+from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect, QWidget
 
 
 class Motion:
@@ -14,63 +13,47 @@ class Motion:
     SLOW = 320
 
 
-_ANIMATION_REF: set[object] = set()
+def reduced_motion(widget: QWidget | None = None) -> bool:
+    if widget is not None and widget.window().property("reduceMotion") is not None:
+        return bool(widget.window().property("reduceMotion"))
+    app = QApplication.instance()
+    return bool(app and app.property("reduceMotion"))
 
 
-def _keep_alive(animation: object) -> None:
-    _ANIMATION_REF.add(animation)
-    if hasattr(animation, "finished"):
-        finished = cast(object, getattr(animation, "finished"))
-        try:
-            finished.connect(lambda a=animation: _ANIMATION_REF.discard(a))
-        except Exception:
-            pass
-
-
-def _ensure_opacity_effect(widget: QWidget) -> QGraphicsOpacityEffect:
+def _opacity_animation(widget: QWidget, start: float, end: float, duration: int) -> QPropertyAnimation:
     effect = widget.graphicsEffect()
-    if not isinstance(effect, QGraphicsOpacityEffect):
+    # A QWidget owns a single graphics effect. Preserve an existing shadow.
+    if effect is not None and not isinstance(effect, QGraphicsOpacityEffect):
+        animation = QPropertyAnimation(widget, b"windowOpacity", widget)
+        animation.setDuration(0)
+        animation.setStartValue(1.0)
+        animation.setEndValue(1.0)
+        return animation
+    if effect is None:
         effect = QGraphicsOpacityEffect(widget)
         widget.setGraphicsEffect(effect)
-    return effect
+    effect.setOpacity(start)
+    animation = QPropertyAnimation(effect, b"opacity", widget)
+    animation.setDuration(0 if reduced_motion(widget) else duration)
+    animation.setStartValue(start)
+    animation.setEndValue(end)
+    animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+    return animation
 
 
 def fade_in(widget: QWidget, duration: int = Motion.FAST) -> QPropertyAnimation:
-    effect = _ensure_opacity_effect(widget)
-    effect.setOpacity(0.0)
-    animation = QPropertyAnimation(effect, b"opacity", widget)
-    animation.setDuration(duration)
-    animation.setStartValue(0.0)
-    animation.setEndValue(1.0)
-    animation.setEasingCurve(QEasingCurve.OutCubic)
+    animation = _opacity_animation(widget, 1.0 if reduced_motion(widget) else 0.0, 1.0, duration)
+    widget._fade_animation = animation  # type: ignore[attr-defined]
     animation.start()
-    _keep_alive(animation)
     return animation
 
 
 def slide_and_fade_in(widget: QWidget, x_offset: int = 18, duration: int = Motion.NORMAL) -> QParallelAnimationGroup:
-    start_pos = widget.pos() + QPoint(x_offset, 0)
-    end_pos = widget.pos()
-
-    move_anim = QPropertyAnimation(widget, b"pos", widget)
-    move_anim.setDuration(duration)
-    move_anim.setStartValue(start_pos)
-    move_anim.setEndValue(end_pos)
-    move_anim.setEasingCurve(QEasingCurve.OutQuart)
-
-    effect = _ensure_opacity_effect(widget)
-    effect.setOpacity(0.0)
-    opacity_anim = QPropertyAnimation(effect, b"opacity", widget)
-    opacity_anim.setDuration(duration)
-    opacity_anim.setStartValue(0.0)
-    opacity_anim.setEndValue(1.0)
-    opacity_anim.setEasingCurve(QEasingCurve.InOutCubic)
-
+    # Layouts own widget geometry; animating pos() fights the layout manager.
     group = QParallelAnimationGroup(widget)
-    group.addAnimation(move_anim)
-    group.addAnimation(opacity_anim)
+    group.addAnimation(_opacity_animation(widget, 1.0 if reduced_motion(widget) else 0.0, 1.0, duration))
+    widget._open_animation = group  # type: ignore[attr-defined]
     group.start()
-    _keep_alive(group)
     return group
 
 
@@ -79,13 +62,11 @@ def animate_dialog_open(dialog: QWidget) -> QParallelAnimationGroup:
 
 
 def animate_dialog_close(dialog: QWidget, on_finished: Callable[[], None]) -> QPropertyAnimation:
-    effect = _ensure_opacity_effect(dialog)
-    animation = QPropertyAnimation(effect, b"opacity", dialog)
-    animation.setDuration(Motion.ULTRA_FAST)
-    animation.setStartValue(effect.opacity())
-    animation.setEndValue(0.0)
-    animation.setEasingCurve(QEasingCurve.InOutCubic)
-    animation.finished.connect(on_finished)
+    animation = _opacity_animation(dialog, 1.0, 0.0, Motion.ULTRA_FAST)
+    dialog._close_animation = animation  # type: ignore[attr-defined]
+    if reduced_motion(dialog):
+        QTimer.singleShot(0, on_finished)
+    else:
+        animation.finished.connect(on_finished)
     animation.start()
-    _keep_alive(animation)
     return animation
