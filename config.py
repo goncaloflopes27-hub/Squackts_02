@@ -1,24 +1,38 @@
 from __future__ import annotations
 
+import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-APP_NAME: str = "Squackts POD Manager"
-APP_VERSION: str = "0.2.0"
+APP_NAME: str = "SquackTS"
+APP_VERSION: str = "0.3.0"
 WINDOW_MIN_WIDTH: int = 1280
 WINDOW_MIN_HEIGHT: int = 800
-
 BASE_DIR: Path = Path(__file__).resolve().parent
-DATA_DIR: Path = BASE_DIR / "data"
-BACKUPS_DIR: Path = BASE_DIR / "backups"
-IMAGES_DIR: Path = BASE_DIR / "assets" / "images"
-LOGS_DIR: Path = BASE_DIR / "logs"
 
+
+def application_data_home() -> Path:
+    """Keep user data independent of the source tree and application updates."""
+    configured = os.environ.get("SQUACKTS_DATA_HOME")
+    if configured:
+        return Path(configured).expanduser().resolve()
+    if sys.platform == "win32":
+        return Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))) / "Squackts"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "Squackts"
+    return Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local" / "share"))) / "squackts"
+
+
+DATA_HOME: Path = application_data_home()
+DATA_DIR: Path = DATA_HOME / "data"
+BACKUPS_DIR: Path = DATA_HOME / "backups"
+IMAGES_DIR: Path = DATA_HOME / "images"
+LOGS_DIR: Path = DATA_HOME / "logs"
 DB_PATH: Path = DATA_DIR / "pod_manager.db"
 LOG_FILE_PATH: Path = LOGS_DIR / "app.log"
-
 DEFAULT_BUSY_TIMEOUT_MS: int = 5_000
-SCHEMA_USER_VERSION: int = 3
+SCHEMA_USER_VERSION: int = 6
 
 
 @dataclass(frozen=True)
@@ -30,6 +44,19 @@ class AppPaths:
     logs_dir: Path = LOGS_DIR
     db_path: Path = DB_PATH
     log_file_path: Path = LOG_FILE_PATH
+
+    @classmethod
+    def from_home(cls, home: Path, *, base_dir: Path = BASE_DIR) -> AppPaths:
+        home = home.expanduser().resolve()
+        return cls(
+            base_dir,
+            home / "data",
+            home / "backups",
+            home / "images",
+            home / "logs",
+            home / "data" / "pod_manager.db",
+            home / "logs" / "app.log",
+        )
 
 
 PATHS = AppPaths()

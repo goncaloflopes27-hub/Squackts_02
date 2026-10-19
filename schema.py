@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from pathlib import Path
 
 from config import SCHEMA_USER_VERSION
+from db import backup_database
+from utils import now_iso, to_json
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS products (
@@ -18,6 +21,7 @@ CREATE TABLE IF NOT EXISTS products (
     stock_minimo INTEGER NOT NULL DEFAULT 0 CHECK (stock_minimo >= 0),
     tipo_producao TEXT NOT NULL CHECK (tipo_producao IN ('print_on_demand', 'stock_fisico', 'misto')),
     image_path TEXT NOT NULL DEFAULT '',
+    technique TEXT NOT NULL DEFAULT '',
     ativo INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1)),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -92,26 +96,144 @@ CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp);
 """
 
 
-def apply_schema(conn: sqlite3.Connection) -> None:
-    conn.commit()
+def _migration_1(conn: sqlite3.Connection) -> None:
+    # Preserve source technique before fulfillment normalization. Versions which
+    # already discarded it are deliberately left blank rather than guessed.
+    if _table_sql(conn, "products"):
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(products)")}
+        if "technique" not in columns:
+            conn.execute("ALTER TABLE products ADD COLUMN technique TEXT NOT NULL DEFAULT ''")
+        conn.execute("""UPDATE products SET technique = tipo_producao
+            WHERE technique = '' AND LOWER(tipo_producao) NOT IN
+            ('print_on_demand', 'stock_fisico', 'misto')""")
+    # Table rebuilds retain identifiers and the legacy REAL -> cents conversion.
     _migrate_products_table(conn)
     _migrate_orders_table(conn)
     _migrate_order_items_table(conn)
-    conn.executescript(SCHEMA_SQL)
+    for statement in SCHEMA_SQL.split(";"):
+        if statement.strip():
+            conn.execute(statement)
 
-    conn.execute("UPDATE products SET tipo_producao = 'print_on_demand' WHERE LOWER(tipo_producao) IN ('dtg', 'dtf', 'sublimação', 'bordado', 'uv', 'giclée')")
-    conn.execute("UPDATE products SET tipo_producao = 'print_on_demand' WHERE tipo_producao NOT IN ('print_on_demand', 'stock_fisico', 'misto')")
-    conn.execute("UPDATE orders SET estado = 'confirmada' WHERE estado = 'pendente'")
-    conn.execute("UPDATE orders SET estado = 'em_producao' WHERE estado = 'producao'")
-    conn.execute("UPDATE orders SET estado = 'pronta_envio' WHERE estado = 'qc'")
-    conn.execute("UPDATE orders SET estado = 'expedida' WHERE estado = 'enviado'")
+
+def _migration_2(conn: sqlite3.Connection) -> None:
+    _migration_1(conn)
     conn.execute(
-        "UPDATE orders SET estado = 'rascunho' WHERE estado NOT IN ('rascunho', 'confirmada', 'paga', 'em_producao', 'pronta_envio', 'expedida', 'concluida', 'cancelada')"
+        "UPDATE products SET tipo_producao = 'print_on_demand' WHERE tipo_producao NOT IN ('print_on_demand', 'stock_fisico', 'misto')"
     )
-    conn.execute("PRAGMA foreign_keys = ON")
-    _validate_foreign_keys(conn)
-    conn.execute(f"PRAGMA user_version = {SCHEMA_USER_VERSION}")
+    for previous, current in (
+        ("pendente", "confirmada"),
+        ("producao", "em_producao"),
+        ("qc", "pronta_envio"),
+        ("enviado", "expedida"),
+    ):
+        conn.execute("UPDATE orders SET estado = ? WHERE estado = ?", (current, previous))
+
+
+def _migration_3(conn: sqlite3.Connection) -> None:
+    # Early releases had REAL-valued tables even when user_version was set.
+    _migration_1(conn)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_orders_client_id ON orders(client_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_orders_estado ON orders(estado)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp)")
+
+
+def _migration_4(conn: sqlite3.Connection) -> None:
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(orders)")}
+    if "payment_recorded_at" not in columns:
+        conn.execute("ALTER TABLE orders ADD COLUMN payment_recorded_at TEXT NOT NULL DEFAULT ''")
+    # Preserve the historical payment flag; do not invent payment or tracking.
+    conn.execute("""CREATE TABLE IF NOT EXISTS reconciliation_issues (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_id INTEGER NOT NULL,
+        code TEXT NOT NULL,
+        detail TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        resolved_at TEXT NOT NULL DEFAULT '',
+        UNIQUE(order_id, code),
+        FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE
+    )""")
+    inconsistent = conn.execute("""SELECT id, estado, pago, tracking FROM orders
+        WHERE (estado = 'paga' AND pago = 0)
+           OR (estado IN ('expedida', 'concluida') AND (pago = 0 OR TRIM(tracking) = ''))""").fetchall()
+    for row in inconsistent:
+        detail = "Registo histórico requer reconciliação do pagamento ou tracking."
+        conn.execute(
+            "INSERT OR IGNORE INTO reconciliation_issues(order_id, code, detail, created_at) VALUES (?, ?, ?, ?)",
+            (row[0], "historical_payment_tracking", detail, now_iso()),
+        )
+        conn.execute(
+            "INSERT INTO logs(timestamp, entidade, entidade_id, acao, detalhe, payload_json) VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                now_iso(),
+                "order",
+                str(row[0]),
+                "migration_reconciliation_required",
+                detail,
+                to_json({"estado": row[1], "pago": row[2], "tracking": row[3]}),
+            ),
+        )
+    conn.execute("UPDATE orders SET estado = 'confirmada' WHERE estado = 'paga'")
+
+
+def _migration_5(conn: sqlite3.Connection) -> None:
+    from pod_schema import apply_pod_schema
+
+    apply_pod_schema(conn)
+
+
+def _migration_6(conn: sqlite3.Connection) -> None:
+    for statement in (
+        "CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(created_at DESC, id DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_orders_state_created ON orders(estado, created_at DESC, id DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_orders_client_created ON orders(client_id, created_at DESC, id DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_orders_updated ON orders(updated_at DESC, id DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_orders_state_updated ON orders(estado, updated_at DESC, id DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_logs_entity ON logs(entidade, entidade_id, id DESC)",
+    ):
+        conn.execute(statement)
+
+
+MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
+    1: _migration_1,
+    2: _migration_2,
+    3: _migration_3,
+    4: _migration_4,
+    5: _migration_5,
+    6: _migration_6,
+}
+
+
+def apply_schema(conn: sqlite3.Connection) -> None:
+    version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+    if version > SCHEMA_USER_VERSION:
+        raise RuntimeError(f"Base de dados versão {version} mais recente que a aplicação ({SCHEMA_USER_VERSION}).")
+    if version == SCHEMA_USER_VERSION:
+        conn.execute("PRAGMA foreign_keys = ON")
+        _validate_foreign_keys(conn)
+        return
     conn.commit()
+    existing = conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' LIMIT 1").fetchone()
+    database_path = conn.execute("PRAGMA database_list").fetchone()[2]
+    if existing and database_path:
+        backup_database(conn, Path(database_path).parent / "migration_backups")
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        for target in range(version + 1, SCHEMA_USER_VERSION + 1):
+            MIGRATIONS[target](conn)
+            if conn.execute("PRAGMA foreign_key_check").fetchall():
+                raise RuntimeError(f"Integridade relacional inválida na migração {target}.")
+            conn.execute(f"PRAGMA user_version = {target}")
+        if conn.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+            raise RuntimeError("Integridade da base de dados inválida após migração.")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
+    _validate_foreign_keys(conn)
 
 
 def _table_sql(conn: sqlite3.Connection, table: str) -> str:
@@ -130,8 +252,12 @@ def _migrate_products_table(conn: sqlite3.Connection) -> None:
 
     has_preco_cents = "preco_cents" in sql
     has_custo_cents = "custo_cents" in sql
-    preco_expr = "CAST(preco_cents AS INTEGER)" if has_preco_cents else "CAST(ROUND(COALESCE(preco, 0) * 100.0) AS INTEGER)"
-    custo_expr = "CAST(custo_cents AS INTEGER)" if has_custo_cents else "CAST(ROUND(COALESCE(custo, 0) * 100.0) AS INTEGER)"
+    preco_expr = (
+        "CAST(preco_cents AS INTEGER)" if has_preco_cents else "CAST(ROUND(COALESCE(preco, 0) * 100.0) AS INTEGER)"
+    )
+    custo_expr = (
+        "CAST(custo_cents AS INTEGER)" if has_custo_cents else "CAST(ROUND(COALESCE(custo, 0) * 100.0) AS INTEGER)"
+    )
 
     with _foreign_keys_temporarily_off(conn):
         conn.execute("DROP TABLE IF EXISTS products__new")
@@ -148,6 +274,7 @@ def _migrate_products_table(conn: sqlite3.Connection) -> None:
                 stock_minimo INTEGER NOT NULL DEFAULT 0 CHECK (stock_minimo >= 0),
                 tipo_producao TEXT NOT NULL CHECK (tipo_producao IN ('print_on_demand', 'stock_fisico', 'misto')),
                 image_path TEXT NOT NULL DEFAULT '',
+                technique TEXT NOT NULL DEFAULT '',
                 ativo INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1)),
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -157,7 +284,7 @@ def _migrate_products_table(conn: sqlite3.Connection) -> None:
         conn.execute(
             f"""
             INSERT INTO products__new
-                (id, sku, nome, descricao, preco_cents, custo_cents, stock, stock_minimo, tipo_producao, image_path, ativo, created_at, updated_at)
+                (id, sku, nome, descricao, preco_cents, custo_cents, stock, stock_minimo, tipo_producao, image_path, technique, ativo, created_at, updated_at)
             SELECT
                 id,
                 sku,
@@ -172,6 +299,7 @@ def _migrate_products_table(conn: sqlite3.Connection) -> None:
                     ELSE 'print_on_demand'
                 END,
                 image_path,
+                technique,
                 ativo,
                 created_at,
                 updated_at
@@ -192,9 +320,17 @@ def _migrate_orders_table(conn: sqlite3.Connection) -> None:
     has_subtotal_cents = "subtotal_cents" in sql
     has_portes_cents = "portes_cents" in sql
     has_total_cents = "total_cents" in sql
-    subtotal_expr = "CAST(subtotal_cents AS INTEGER)" if has_subtotal_cents else "CAST(ROUND(COALESCE(subtotal, 0) * 100.0) AS INTEGER)"
-    portes_expr = "CAST(portes_cents AS INTEGER)" if has_portes_cents else "CAST(ROUND(COALESCE(portes, 0) * 100.0) AS INTEGER)"
-    total_expr = "CAST(total_cents AS INTEGER)" if has_total_cents else "CAST(ROUND(COALESCE(total, 0) * 100.0) AS INTEGER)"
+    subtotal_expr = (
+        "CAST(subtotal_cents AS INTEGER)"
+        if has_subtotal_cents
+        else "CAST(ROUND(COALESCE(subtotal, 0) * 100.0) AS INTEGER)"
+    )
+    portes_expr = (
+        "CAST(portes_cents AS INTEGER)" if has_portes_cents else "CAST(ROUND(COALESCE(portes, 0) * 100.0) AS INTEGER)"
+    )
+    total_expr = (
+        "CAST(total_cents AS INTEGER)" if has_total_cents else "CAST(ROUND(COALESCE(total, 0) * 100.0) AS INTEGER)"
+    )
 
     with _foreign_keys_temporarily_off(conn):
         conn.execute("DROP TABLE IF EXISTS orders__new")
@@ -263,8 +399,16 @@ def _migrate_order_items_table(conn: sqlite3.Connection) -> None:
 
     has_preco_unit_cents = "preco_unit_cents" in sql
     has_custo_unit_cents = "custo_unit_cents" in sql
-    preco_expr = "CAST(preco_unit_cents AS INTEGER)" if has_preco_unit_cents else "CAST(ROUND(COALESCE(preco_unit, 0) * 100.0) AS INTEGER)"
-    custo_expr = "CAST(custo_unit_cents AS INTEGER)" if has_custo_unit_cents else "CAST(ROUND(COALESCE(custo_unit, 0) * 100.0) AS INTEGER)"
+    preco_expr = (
+        "CAST(preco_unit_cents AS INTEGER)"
+        if has_preco_unit_cents
+        else "CAST(ROUND(COALESCE(preco_unit, 0) * 100.0) AS INTEGER)"
+    )
+    custo_expr = (
+        "CAST(custo_unit_cents AS INTEGER)"
+        if has_custo_unit_cents
+        else "CAST(ROUND(COALESCE(custo_unit, 0) * 100.0) AS INTEGER)"
+    )
 
     with _foreign_keys_temporarily_off(conn):
         conn.execute("DROP TABLE IF EXISTS order_items__new")
@@ -313,9 +457,9 @@ def _migrate_order_items_table(conn: sqlite3.Connection) -> None:
 
 @contextmanager
 def _foreign_keys_temporarily_off(conn: sqlite3.Connection) -> Iterator[None]:
-    conn.commit()
-    original_fk = int(conn.execute("PRAGMA foreign_keys").fetchone()[0])
-    conn.execute("PRAGMA foreign_keys = OFF")
+    # apply_schema owns the outer transaction and foreign-key setting.
+    if int(conn.execute("PRAGMA foreign_keys").fetchone()[0]):
+        raise RuntimeError("A reconstrução do schema exige a transação de migração.")
     conn.execute("SAVEPOINT schema_rebuild")
     try:
         yield
@@ -324,8 +468,6 @@ def _foreign_keys_temporarily_off(conn: sqlite3.Connection) -> Iterator[None]:
         conn.execute("ROLLBACK TO SAVEPOINT schema_rebuild")
         conn.execute("RELEASE SAVEPOINT schema_rebuild")
         raise
-    finally:
-        conn.execute(f"PRAGMA foreign_keys = {original_fk}")
 
 
 def _validate_foreign_keys(conn: sqlite3.Connection) -> None:

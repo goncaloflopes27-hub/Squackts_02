@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, DecimalException
 from pathlib import Path
 from typing import Any
 
@@ -11,16 +11,20 @@ CENT_FACTOR = Decimal("100")
 
 def format_currency(value: float | Decimal | str | int) -> str:
     amount = Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    return f"€{amount:,.2f}".replace(",", " ")
+    return f"{amount:,.2f}".replace(",", " ").replace(".", ",") + " €"
 
 
 def money_to_cents(raw: object) -> int:
     try:
         value = Decimal(str(raw))
-    except InvalidOperation as exc:
+        if not value.is_finite():
+            raise ValueError("Valor monetário inválido")
+        cents = (value * CENT_FACTOR).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        if abs(cents) > 9_223_372_036_854_775_807:
+            raise ValueError("Valor monetário fora do limite suportado")
+        return int(cents)
+    except DecimalException as exc:
         raise ValueError("Valor monetário inválido") from exc
-    cents = (value * CENT_FACTOR).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-    return int(cents)
 
 
 def cents_to_money(cents: int | str | float) -> Decimal:

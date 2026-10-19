@@ -180,8 +180,8 @@ class ServiceTestCase(unittest.TestCase):
         self.order_service.create_order(payload)
         product = self.product_service.get_product(self.product_misto)
         assert product is not None
-        # stock misto só desconta quando stock >= quantidade; neste caso mantém.
-        self.assertEqual(int(product["stock"]), 2)
+        # O misto reserva o disponível e produz apenas o restante.
+        self.assertEqual(int(product["stock"]), 0)
 
     def test_stock_rule_misto_deducts_when_enough(self) -> None:
         payload = self._order_payload(qty=1)
@@ -353,11 +353,13 @@ class ServiceTestCase(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.order_service.create_order({"client_id": 999, "items": []})
 
-    def test_production_invalid_transition(self) -> None:
+    def test_production_repeated_command_is_idempotent(self) -> None:
         order_id = self.order_service.create_order(self._order_payload(qty=1))
         self.production_service.mark_producing(order_id)
-        with self.assertRaises(ValueError):
-            self.production_service.mark_producing(order_id)
+        self.production_service.mark_producing(order_id)
+        order = self.order_service.get_order(order_id)
+        assert order is not None
+        self.assertEqual(str(order["estado"]), "em_producao")
 
     def test_production_blocked_for_final_states(self) -> None:
         order_id = self.order_service.create_order(self._order_payload(qty=1))
@@ -369,6 +371,8 @@ class ServiceTestCase(unittest.TestCase):
         order_id = self.order_service.create_order(self._order_payload(qty=1))
         self.production_service.mark_producing(order_id)
         self.production_service.mark_produced(order_id)
+        self.order_service.set_payment(order_id, True)
+        self.order_service.update_tracking(order_id, "TRK-VALID")
         self.production_service.mark_ready_to_ship(order_id)
         order = self.order_service.get_order(order_id)
         assert order is not None
