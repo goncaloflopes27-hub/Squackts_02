@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QMainWindow,
+    QPushButton,
     QScrollArea,
     QStackedWidget,
     QVBoxLayout,
@@ -18,7 +19,8 @@ from PySide6.QtWidgets import (
 
 from config import APP_NAME, WINDOW_MIN_HEIGHT, WINDOW_MIN_WIDTH
 from service_container import ServiceContainer
-from ui.animations import fade_in
+from ui.animations import PageTransition, reduced_motion
+from ui.command_palette import CommandPalette
 from ui.components import SearchInput, show_toast
 from ui.pages import ClientsPage, DashboardPage, OrdersPage, ProductionPage, ProductsPage, SystemPage
 from ui.preferences import LocalPreferences, PreferencesDialog
@@ -66,6 +68,7 @@ class MainWindow(QMainWindow):
         content_layout.setSpacing(0)
         self.topbar = TopBar()
         self.topbar.search_changed.connect(self._handle_global_search)
+        self.topbar.commands_requested.connect(self.open_commands)
         self.topbar.menu_requested.connect(self._toggle_sidebar)
         self.topbar.alerts_requested.connect(self._open_alerts)
         self.topbar.preferences_requested.connect(self.open_preferences)
@@ -104,6 +107,10 @@ class MainWindow(QMainWindow):
             search = getattr(page, "search_input", None)
             if isinstance(search, SearchInput):
                 search.hide()
+            # The contextual primary action lives in the header, not in duplicate toolbars.
+            for button in page.findChildren(QPushButton):
+                if button.text() in {"Nova encomenda", "Novo produto", "Novo cliente"}:
+                    button.hide()
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
             scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -128,7 +135,8 @@ class MainWindow(QMainWindow):
         if page_key in self._dirty or previous != page_key:
             self._refresh_page(page_key)
         if previous != page_key:
-            fade_in(self.page_refs[page_key])
+            if not reduced_motion(self):
+                self._page_transition = PageTransition(self.page_scrolls[page_key], self.stack)
 
     def navigate_to_results(self, page_key: str, query: str = "") -> None:
         self.navigate(page_key)
@@ -143,7 +151,7 @@ class MainWindow(QMainWindow):
     def _sync_topbar(self, page_key: str) -> None:
         page = self.page_refs[page_key]
         contexts = {
-            "dashboard": ("Painel", "Prioridades e resultados", "Pesquisar encomendas recentes…", "Atualizar", None),
+            "dashboard": ("Hoje", "O teu atelier, organizado", "Pesquisar encomendas recentes…", "Atualizar", None),
             "orders": ("Encomendas", "Da confirmação à entrega", "Pesquisar número, cliente ou tracking…", "Nova encomenda", "_open_create"),
             "products": ("Catálogo", "Produtos e disponibilidade", "Pesquisar produto ou SKU…", "Novo produto", "_open_create"),
             "clients": ("Clientes", "Contactos e relacionamento", "Pesquisar nome, email ou telefone…", "Novo cliente", "_open_create"),
@@ -246,7 +254,7 @@ class MainWindow(QMainWindow):
 
     def _install_shortcuts(self) -> None:
         shortcuts: list[tuple[str, Callable[[], None]]] = [
-            ("Ctrl+K", self._focus_search), ("Ctrl+F", self._focus_search),
+            ("Ctrl+K", self.open_commands), ("Ctrl+F", self._focus_search),
             ("F5", self.refresh_current), ("Ctrl+,", self.open_preferences),
             ("Ctrl+B", self._toggle_sidebar), ("Ctrl+N", self._create_current),
         ]
@@ -257,6 +265,13 @@ class MainWindow(QMainWindow):
             shortcut = QShortcut(QKeySequence(sequence), self)
             shortcut.activated.connect(callback)
             self._shortcuts.append(shortcut)
+
+    def open_commands(self) -> None:
+        def create_order() -> None:
+            self.navigate("orders")
+            self._create_current()
+        self.command_palette = CommandPalette(self.navigate_to_results, create_order, self)
+        self.command_palette.open()
 
     def _focus_search(self) -> None:
         if self.topbar.search.isEnabled():

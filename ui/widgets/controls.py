@@ -163,9 +163,8 @@ class SidebarButton(QPushButton):
             }}
             QPushButton:hover {{background:{COLORS.surface_alt}; color:{COLORS.text_primary}; border:1px solid {COLORS.border};}}
             QPushButton:checked {{
-                background:{COLORS.surface_elevated};
-                border:1px solid {COLORS.border_strong};
-                border-left:3px solid {COLORS.brand_red};
+                background:transparent;
+                border:1px solid transparent;
                 color:{COLORS.text_primary};
                 padding-left:12px;
             }}

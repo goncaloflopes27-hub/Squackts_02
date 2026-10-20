@@ -14,11 +14,12 @@ class TopBar(QFrame):
     alerts_requested = Signal()
     preferences_requested = Signal()
     menu_requested = Signal()
+    commands_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("TopBar")
-        self.setFixedHeight(124)
+        self.setFixedHeight(112)
         self.setStyleSheet(
             f"QFrame#TopBar {{background:{COLORS.surface}; border-bottom:1px solid {COLORS.border};}}"
         )
@@ -29,17 +30,21 @@ class TopBar(QFrame):
         root.setSpacing(10)
         row = QHBoxLayout()
         row.setSpacing(SPACING.sm)
-        self.menu_button = IconButton("Menu")
+        self.menu_button = IconButton("☰")
         self.menu_button.setToolTip("Expandir ou recolher navegação")
         self.menu_button.clicked.connect(self.menu_requested.emit)
         row.addWidget(self.menu_button)
         self.title = QLabel("Painel")
-        self.title.setStyleSheet("font-size:18px; font-weight:700;")
+        self.title.setStyleSheet("font-size:14px; font-weight:600;")
         row.addWidget(self.title)
         self.subtitle = QLabel("")
         self.subtitle.setStyleSheet(f"font-size:12px; color:{COLORS.text_secondary};")
         row.addWidget(self.subtitle)
         row.addStretch(1)
+        self.commands_button = IconButton("Comandos  Ctrl+F")
+        self.commands_button.setToolTip("Comandos e pesquisa rápida · Ctrl+K")
+        self.commands_button.clicked.connect(self.commands_requested.emit)
+        row.addWidget(self.commands_button)
         self.alerts_button = IconButton("Alertas")
         self.alerts_button.setToolTip("Ver pendências operacionais no Painel")
         self.alerts_button.clicked.connect(self.alerts_requested.emit)
@@ -49,16 +54,21 @@ class TopBar(QFrame):
         row.addWidget(self.preferences_button)
         self.secondary_action = SecondaryButton("Atualizar")
         self.secondary_action.clicked.connect(self._run_secondary)
-        row.addWidget(self.secondary_action)
+
         self.primary_action = PrimaryButton("Atualizar")
         self.primary_action.clicked.connect(self._run_primary)
-        row.addWidget(self.primary_action)
+
         root.addLayout(row)
         self.search = SearchInput("Pesquisar…")
         self.search.setObjectName("ContextSearch")
         self.search.setToolTip("Pesquisar nesta página · Ctrl+K")
         self.search.textChanged.connect(self.search_changed.emit)
-        root.addWidget(self.search)
+        search_row = QHBoxLayout()
+        search_row.setSpacing(SPACING.sm)
+        search_row.addWidget(self.search, 1)
+        search_row.addWidget(self.secondary_action)
+        search_row.addWidget(self.primary_action)
+        root.addLayout(search_row)
 
     def set_context(
         self,
@@ -90,6 +100,7 @@ class TopBar(QFrame):
 
     def set_compact(self, compact: bool) -> None:
         self.subtitle.setVisible(not compact)
+        self.commands_button.setText("Ctrl+K" if compact else "Comandos  Ctrl+K")
         self.preferences_button.setText("Opções" if compact else "Preferências")
 
     def _run_primary(self) -> None:

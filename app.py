@@ -80,6 +80,14 @@ def main(argv: list[str] | None = None) -> int:
             if icon.is_file():
                 qt.setWindowIcon(QIcon(str(icon)))
                 break
+        from ui.theme import initialize_theme
+        initialize_theme(qt)
+        splash = None
+        if not args.smoke_test:
+            from ui.splash import StartupSplash
+            splash = StartupSplash()
+            splash.show()
+            splash.advance(15, "A abrir o teu espaço de trabalho…")
         try:
             paths.data_dir.mkdir(parents=True, exist_ok=True)
             lock = QLockFile(str(home / ".squackts.lock"))
@@ -91,8 +99,13 @@ def main(argv: list[str] | None = None) -> int:
             resources.callback(install_exception_handler(qt, paths.log_file_path))
             container = bootstrap_infrastructure(paths, migrate_legacy=not args.demo and not args.smoke_test)
             resources.callback(container.close)
+            if splash is not None:
+                splash.advance(75, "A organizar o painel…")
             window = MainWindow(container)
             window.show()
+            if splash is not None:
+                splash.advance(100, "Tudo pronto.")
+                splash.close()
             if args.smoke_test:
                 from ui.smoke import SmokeProbe
                 probe = SmokeProbe(window, qt, args.screenshots)
@@ -102,6 +115,8 @@ def main(argv: list[str] | None = None) -> int:
                 return status or int(bool(probe.failures))
             return status
         except (OSError, ValueError, RuntimeError, sqlite3.Error) as error:
+            if splash is not None:
+                splash.close()
             logging.getLogger("squackts").exception("Falha no arranque")
             if qt.platformName() == "offscreen" or args.smoke_test:
                 print(f"SquackTS: {error}", file=sys.stderr)

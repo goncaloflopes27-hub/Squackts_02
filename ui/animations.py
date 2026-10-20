@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import QEasingCurve, QParallelAnimationGroup, QPropertyAnimation, QTimer
+from PySide6.QtCore import QEasingCurve, QParallelAnimationGroup, QPropertyAnimation, Qt, QTimer
 from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect, QWidget
 
 
 class Motion:
     ULTRA_FAST = 120
-    FAST = 180
-    NORMAL = 240
+    FAST = 120
+    NORMAL = 200
     SLOW = 320
 
 
@@ -70,3 +70,37 @@ def animate_dialog_close(dialog: QWidget, on_finished: Callable[[], None]) -> QP
         animation.finished.connect(on_finished)
     animation.start()
     return animation
+
+
+class PageTransition(QWidget):
+    """Paint a cached snapshot; never install an opacity effect on a whole page."""
+    def __init__(self, page: QWidget, host: QWidget) -> None:
+        from PySide6.QtCore import QVariantAnimation
+        super().__init__(host)
+        self.snapshot = page.grab()
+        self.progress = 0.0
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setGeometry(host.rect())
+        self.animation = QVariantAnimation(self)
+        self.animation.setDuration(Motion.NORMAL)
+        self.animation.setStartValue(0.0)
+        self.animation.setEndValue(1.0)
+        self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.animation.valueChanged.connect(self._step)
+        self.animation.finished.connect(self.deleteLater)
+        self.show()
+        self.raise_()
+        self.animation.start()
+
+    def _step(self, value: float) -> None:
+        self.progress = value
+        self.update()
+
+    def paintEvent(self, event: object) -> None:
+        from PySide6.QtGui import QColor, QPainter
+
+        from ui.theme import COLORS
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor(COLORS.background))
+        painter.setOpacity(self.progress)
+        painter.drawPixmap(round(12 * (1 - self.progress)), 0, self.snapshot)
