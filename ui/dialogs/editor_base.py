@@ -5,7 +5,7 @@ import sqlite3
 from collections.abc import Callable
 
 from PySide6.QtCore import QRect, Qt, QTimer
-from PySide6.QtGui import QShowEvent
+from PySide6.QtGui import QKeySequence, QShortcut, QShowEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -33,6 +33,13 @@ class EditorDialog(QDialog):
         self._saved = False
         self._submission_error: str | None = None
         self._baseline: tuple[object, ...] = ()
+        self._save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
+        self._save_shortcut.activated.connect(self._save_from_keyboard)
+
+    def _save_from_keyboard(self) -> None:
+        actions = getattr(self, "form_actions", None)
+        if actions is not None and actions.confirm_button.isEnabled():
+            actions.confirm_button.click()
 
     def _fit_to_screen(self, available: QRect | None = None) -> None:
         screen = self.screen()
@@ -51,7 +58,7 @@ class EditorDialog(QDialog):
             return False
         self._saving = True
         button.setEnabled(False)
-        button.setText("A guardar...")
+        button.setText("A guardar…")
         try:
             operation()
         except Exception as failure:
@@ -77,6 +84,7 @@ class EditorDialog(QDialog):
             validate = getattr(self, "_validate_form", None)
             if callable(validate):
                 validate()
+        button.setText("Guardado ✓")
         self._submission_error = ""
         error.set_error(None)
         return True

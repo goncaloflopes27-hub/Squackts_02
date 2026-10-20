@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEasingCurve, QEvent, Qt, QVariantAnimation, Signal
+from PySide6.QtGui import QColor, QEnterEvent
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ui.animations import reduced_motion
 from ui.theme import COLORS, RADIUS, SPACING, TYPE, translucent
 from ui.widgets.common import CONTROL_HEIGHT
 
@@ -88,22 +90,41 @@ class _BaseButton(QPushButton):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAccessibleName(text)
         self.setMinimumHeight(CONTROL_HEIGHT)
-        self.setStyleSheet(
-            f"""
-            QPushButton {{
-                background: {bg};
-                border: 1px solid {border};
-                border-radius: {RADIUS.sm}px;
-                color: {fg};
-                font-weight: 600;
-                padding: 9px 14px;
-            }}
-            QPushButton:hover {{ background: {hover}; border: 1px solid {COLORS.border_strong}; }}
-            QPushButton:focus {{ border: 2px solid {COLORS.primary}; }}
-            QPushButton:disabled {{ background:{COLORS.surface_alt}; color:{COLORS.text_muted}; border:1px solid {COLORS.border}; }}
-            QPushButton:pressed {{ background: {hover}; }}
-            """
-        )
+        self._background = QColor(bg) if not bg.startswith("rgba") else QColor(COLORS.surface)
+        self._hover = QColor(hover) if not hover.startswith("rgba") else QColor(COLORS.surface_elevated)
+        self._border, self._foreground = border, fg
+        self._hover_animation = QVariantAnimation(self)
+        self._hover_animation.setDuration(120)
+        self._hover_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._hover_animation.valueChanged.connect(self._paint_color)
+        self._paint_color(self._background)
+
+    def _paint_color(self, color: QColor) -> None:
+        background = f"rgba({color.red()}, {color.green()}, {color.blue()}, {color.alpha()})"
+        pressed = COLORS.primary_pressed if self._foreground == COLORS.on_primary else COLORS.overlay_soft
+        self.setStyleSheet(f"""
+            QPushButton {{background:{background}; border:1px solid {self._border}; border-radius:8px;
+                color:{self._foreground}; font-weight:600; padding:8px 14px;}}
+            QPushButton:focus {{border:2px solid {COLORS.focus_ring};}}
+            QPushButton:disabled {{background:{COLORS.surface_alt}; color:{COLORS.text_muted}; border:1px solid {COLORS.border};}}
+            QPushButton:pressed {{background:{pressed};}}
+        """)
+
+    def _animate_hover(self, target: QColor) -> None:
+        current = self._hover_animation.currentValue()
+        self._hover_animation.stop()
+        self._hover_animation.setDuration(0 if reduced_motion(self) else 120)
+        self._hover_animation.setStartValue(current if isinstance(current, QColor) else self._background)
+        self._hover_animation.setEndValue(target)
+        self._hover_animation.start()
+
+    def enterEvent(self, event: QEnterEvent) -> None:
+        self._animate_hover(self._hover)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event: QEvent) -> None:
+        self._animate_hover(self._background)
+        super().leaveEvent(event)
 
 
 class PrimaryButton(_BaseButton):

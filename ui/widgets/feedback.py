@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QWidget,
 )
 
@@ -15,7 +18,7 @@ _ACTIVE_TOASTS: dict[int, list[ToastMessage]] = {}
 
 
 class ToastMessage(QFrame):
-    def __init__(self, text: str, tone: str = "info", parent: QWidget | None = None) -> None:
+    def __init__(self, text: str, tone: str = "info", parent: QWidget | None = None, undo: Callable[[], None] | None = None) -> None:
         super().__init__(parent)
         palette = {"info": COLORS.info, "ok": COLORS.success, "danger": COLORS.danger, "warning": COLORS.warning}
         color = palette.get(tone, COLORS.info)
@@ -25,6 +28,9 @@ class ToastMessage(QFrame):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(10)
+        icon = QLabel({"danger": "⚠", "warning": "!", "ok": "✓"}.get(tone, "i"))
+        icon.setStyleSheet(f"color:{color}; font-size:16px; border:0;")
+        layout.addWidget(icon)
         accent = QFrame()
         accent.setFixedWidth(4)
         accent.setStyleSheet(f"background:{color}; border:none; border-radius:2px;")
@@ -32,13 +38,24 @@ class ToastMessage(QFrame):
         label = QLabel(text)
         label.setWordWrap(True)
         label.setTextFormat(Qt.TextFormat.PlainText)
-        label.setStyleSheet(f"color:{COLORS.text_primary};")
+        label.setStyleSheet(f"color:{COLORS.text_primary}; border:0;")
         layout.addWidget(label)
+        if undo is not None:
+            action = QPushButton("Anular")
+            action.clicked.connect(undo)
+            action.clicked.connect(self.hide)
+            layout.addWidget(action)
+        dismiss = QPushButton("×")
+        dismiss.setAccessibleName("Fechar notificação")
+        dismiss.setFixedSize(28, 28)
+        dismiss.clicked.connect(self.hide)
+        layout.addWidget(dismiss)
 
 
-def show_toast(parent: QWidget, text: str, tone: str = "info") -> None:
+def show_toast(parent: QWidget, text: str, tone: str = "info", *, undo: Callable[[], None] | None = None) -> None:
     """A parent-owned timer cannot outlive its toast or call deleted Qt objects."""
-    toast = ToastMessage(text, tone, parent)
+    parent = parent.window()
+    toast = ToastMessage(text, tone, parent, undo)
     toast.setAccessibleName(text)
     toast.setMaximumWidth(max(220, min(520, parent.width() - 32)))
     toast.adjustSize()
@@ -64,11 +81,12 @@ def show_toast(parent: QWidget, text: str, tone: str = "info") -> None:
             _ACTIVE_TOASTS.pop(key, None)
 
     timer.timeout.connect(close_toast)
-    timer.start(6000 if tone in {"danger", "warning"} else 3500)
+    timer.start(6000 if tone in {"danger", "warning"} else 4000)
 
 
 def _reposition_toasts(parent: QWidget) -> None:
-    y = 16
+    y = parent.height() - 24
     for toast in _ACTIVE_TOASTS.get(id(parent), []):
-        toast.move(max(16, parent.width() - toast.width() - 24), y)
-        y += toast.height() + 8
+        y -= toast.height()
+        toast.move(max(16, parent.width() - toast.width() - 24), max(16, y))
+        y -= 8

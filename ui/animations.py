@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PySide6.QtCore import QEasingCurve, QParallelAnimationGroup, QPropertyAnimation, Qt, QTimer
-from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect, QWidget
+from PySide6.QtWidgets import QApplication, QDialog, QGraphicsOpacityEffect, QWidget
 
 
 class Motion:
@@ -21,6 +21,19 @@ def reduced_motion(widget: QWidget | None = None) -> bool:
 
 
 def _opacity_animation(widget: QWidget, start: float, end: float, duration: int) -> QPropertyAnimation:
+    if isinstance(widget, QDialog):
+        animation = QPropertyAnimation(widget, b"windowOpacity", widget)
+        animation.setDuration(0 if reduced_motion(widget) else duration)
+        animation.setStartValue(start)
+        animation.setEndValue(end)
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        return animation
+    if widget.width() * widget.height() > 300_000:
+        animation = QPropertyAnimation(widget, b"windowOpacity", widget)
+        animation.setDuration(0)
+        animation.setStartValue(1.0)
+        animation.setEndValue(1.0)
+        return animation
     effect = widget.graphicsEffect()
     # A QWidget owns a single graphics effect. Preserve an existing shadow.
     if effect is not None and not isinstance(effect, QGraphicsOpacityEffect):

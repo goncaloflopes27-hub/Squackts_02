@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from PySide6.QtCore import QSettings, Signal
-from PySide6.QtWidgets import QCheckBox, QDialog, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QCheckBox, QComboBox, QDialog, QLabel, QVBoxLayout, QWidget
 
 from ui.components import FormActions, ModalHeader
 from ui.theme import COLORS, SPACING
@@ -42,13 +42,18 @@ class PreferencesDialog(QDialog):
         root.setContentsMargins(SPACING.lg, SPACING.lg, SPACING.lg, SPACING.lg)
         root.setSpacing(SPACING.md)
         root.addWidget(ModalHeader("Preferências", "Personalize a forma como trabalha."))
-        self.reduce_motion = QCheckBox("Reduzir animações")
-        self.reduce_motion.setChecked(store.get("ui.reduce_motion", "0") == "1")
-        root.addWidget(self.reduce_motion)
+        root.addWidget(QLabel("Animações"))
+        self.motion_mode = QComboBox()
+        self.motion_mode.addItems(["Completas", "Reduzidas", "Desligadas"])
+        fallback = "reduced" if store.get("ui.reduce_motion", "0") == "1" else "full"
+        mode = store.get("ui.motion_mode", fallback)
+        self.motion_mode.setCurrentIndex({"full": 0, "reduced": 1, "off": 2}.get(mode, 0))
+        self.motion_mode.setAccessibleName("Nível de animações")
+        root.addWidget(self.motion_mode)
         self.compact_sidebar = QCheckBox("Preferir navegação compacta")
         self.compact_sidebar.setChecked(store.get("ui.compact_sidebar", "0") == "1")
         root.addWidget(self.compact_sidebar)
-        helper = QLabel("Em janelas menores a navegação adapta-se automaticamente.\nPesquisa: Ctrl+K · Atualizar: F5 · Páginas: Alt+1 a Alt+6")
+        helper = QLabel("Em janelas menores a navegação adapta-se automaticamente.\nComandos: Ctrl+K · Pesquisa: Ctrl+F · Atualizar: F5 · Páginas: Alt+1 a Alt+6")
         helper.setWordWrap(True)
         helper.setStyleSheet(f"color:{COLORS.text_secondary}; font-size:12px;")
         root.addWidget(helper)
@@ -64,7 +69,8 @@ class PreferencesDialog(QDialog):
 
     def _save(self) -> None:
         try:
-            self.store.set("ui.reduce_motion", "1" if self.reduce_motion.isChecked() else "0")
+            self.store.set("ui.motion_mode", ["full", "reduced", "off"][self.motion_mode.currentIndex()])
+            self.store.set("ui.reduce_motion", "1" if self.motion_mode.currentIndex() else "0")
             self.store.set("ui.compact_sidebar", "1" if self.compact_sidebar.isChecked() else "0")
         except (ValueError, OSError) as exc:
             self.error.setText(str(exc))

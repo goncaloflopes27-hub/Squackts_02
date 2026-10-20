@@ -111,6 +111,10 @@ class MainWindow(QMainWindow):
             for button in page.findChildren(QPushButton):
                 if button.text() in {"Nova encomenda", "Novo produto", "Novo cliente"}:
                     button.hide()
+            empty = getattr(page, "empty", None)
+            create = getattr(page, "_open_create", None)
+            if empty is not None and callable(create):
+                empty.set_action({"orders": "Criar encomenda", "products": "Criar produto", "clients": "Criar cliente"}[key], create)
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
             scroll.setFrameShape(QFrame.Shape.NoFrame)

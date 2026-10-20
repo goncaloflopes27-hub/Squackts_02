@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from pathlib import Path
+
 from PySide6.QtCore import QEasingCurve, Qt, QTimer, QVariantAnimation, Signal
 from PySide6.QtGui import QColor, QKeyEvent, QMouseEvent, QPainter, QPaintEvent
+from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -124,13 +128,10 @@ class EmptyState(AppCard):
         layout: QVBoxLayout = self.layout()  # type: ignore[assignment]
         layout.setSpacing(SPACING.sm)
         layout.addStretch(1)
-        icon = QLabel("◌")
-        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon.setStyleSheet(
-            f"min-width:34px; min-height:34px; max-width:34px; max-height:34px;"
-            f"border-radius:{RADIUS.sm}px; background:{COLORS.surface_alt}; color:{COLORS.text_secondary}; font-size:16px;"
-        )
-        layout.addWidget(icon, alignment=Qt.AlignmentFlag.AlignLeft)
+        self.illustration = QSvgWidget()
+        self.illustration.setFixedSize(128, 90)
+        self.illustration.setAccessibleName("Ilustração de um pato em repouso")
+        layout.addWidget(self.illustration)
         self.title_label = QLabel(title)
         self.title_label.setStyleSheet("font-size:18px; font-weight:720;")
         self.desc_label = QLabel(description)
@@ -138,11 +139,27 @@ class EmptyState(AppCard):
         self.desc_label.setStyleSheet(f"color:{COLORS.text_secondary};")
         layout.addWidget(self.title_label)
         layout.addWidget(self.desc_label)
+        self.action = PrimaryButton("Criar agora")
+        self.action.hide()
+        layout.addWidget(self.action, alignment=Qt.AlignmentFlag.AlignLeft)
         layout.addStretch(1)
+        self._set_illustration(title)
 
     def set_content(self, title: str, description: str) -> None:
         self.title_label.setText(title)
         self.desc_label.setText(description)
+        self._set_illustration(title)
+
+    def _set_illustration(self, title: str) -> None:
+        searching = title == "Sem resultados"
+        filename = "empty-search.svg" if searching else "empty-sleep.svg"
+        self.illustration.load(str(Path(__file__).parents[1] / "assets/illustrations" / filename))
+        self.illustration.setAccessibleName("Pato à procura de resultados" if searching else "Pato em repouso")
+
+    def set_action(self, text: str, callback: Callable[[], None]) -> None:
+        self.action.setText(text)
+        self.action.clicked.connect(callback)
+        self.action.show()
 
 
 class RichEmptyState(EmptyState):
