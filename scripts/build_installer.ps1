@@ -28,11 +28,13 @@ if (-not (Test-Path -LiteralPath $compiler)) {
     if ($found) { $compiler = $found.Source }
     else { throw 'Inno Setup 6 nao encontrado. Instale-o no computador de build.' }
 }
-$info = (Get-Item -LiteralPath $compiler).VersionInfo
-$actual = "$($info.FileMajorPart).$($info.FileMinorPart).$($info.FileBuildPart)"
-if ($actual -ne $pin.version) { throw "Compilador Inno Setup $actual; esperado $($pin.version)." }
-& $compiler "/DAppVersion=$version" "/DFileVersion=$($metadata.file_version)" (Join-Path $projectRoot 'packaging\windows.iss')
+# ISCC.exe has no numeric PE file version. Check the engine that actually compiles.
+& $compiler "/DAppVersion=$version" "/DFileVersion=$($metadata.file_version)" (Join-Path $projectRoot 'packaging\windows.iss') | Tee-Object -Variable compilerOutput
 if ($LASTEXITCODE -ne 0) { throw 'Falha ao compilar o instalador.' }
+$engine = [regex]::Match(($compilerOutput -join "`n"), 'Compiler engine version: Inno Setup (\d+\.\d+\.\d+)\b')
+if (-not $engine.Success) { throw 'Nao foi possivel verificar a versao do motor Inno Setup.' }
+$actual = $engine.Groups[1].Value
+if ($actual -ne $pin.version) { throw "Compilador Inno Setup $actual; esperado $($pin.version)." }
 $installer = Join-Path $projectRoot "dist\installer\SquackTS-Setup-$version-x64.exe"
 if (-not (Test-Path -LiteralPath $installer)) { throw 'O compilador nao produziu o instalador.' }
 $metadata | Add-Member -NotePropertyName compiler_version -NotePropertyValue $actual
