@@ -29,7 +29,6 @@ from services.product_service import ProductService
 from ui.components import (
     ActivityList,
     ConfirmationDialog,
-    DataTable,
     DetailPanel,
     EmptyState,
     GhostButton,
@@ -37,6 +36,7 @@ from ui.components import (
     PageHeader,
     PanelHeader,
     PrimaryButton,
+    RecordTable,
     SearchInput,
     SecondaryButton,
     Toolbar,
@@ -111,7 +111,7 @@ class OrdersPage(QWidget):
 
         left = QVBoxLayout()
         left.setContentsMargins(0, 0, 0, 0)
-        self.table = DataTable(0, 7)
+        self.table = RecordTable(0, 7)
         self.table.setHorizontalHeaderLabels(["Número", "Cliente", "Itens", "Estado", "Tracking", "Pago", "Total"])
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.itemSelectionChanged.connect(self._on_selection_changed)

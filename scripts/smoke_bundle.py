@@ -18,6 +18,11 @@ def smoke_bundle(executable: Path, screenshots: Path | None = None, *, platform:
     platform = platform or ("windows" if sys.platform == "win32" else "offscreen")
     if platform == "windows" and not list((executable.parent / "_internal").rglob("qwindows.dll")):
         raise RuntimeError("O plugin qwindows.dll está ausente da distribuição")
+    source_ui = Path(__file__).resolve().parents[1] / "ui"
+    for relative in ("assets/fonts/Inter.ttf", "assets/fonts/OFL.txt", "assets/illustrations/empty-sleep.svg", "assets/illustrations/empty-search.svg"):
+        packaged = executable.parent / "_internal/ui" / relative
+        if not packaged.is_file() or hashlib.sha256(packaged.read_bytes()).digest() != hashlib.sha256((source_ui / relative).read_bytes()).digest():
+            raise RuntimeError(f"Asset de apresentação ausente ou desatualizado: {relative}")
     source_icons = Path(__file__).resolve().parents[1] / "ui" / "icons"
     for page in ("dashboard", "orders", "products", "clients", "production", "system"):
         icon_name = f"nav-{page}.svg"
@@ -41,7 +46,7 @@ def smoke_bundle(executable: Path, screenshots: Path | None = None, *, platform:
             if screenshots is not None:
                 report = json.loads((screenshots / str(attempt + 1) / "smoke-report.json").read_text(encoding="utf-8"))
                 metadata = json.loads((executable.parent / "build-info.json").read_text(encoding="utf-8"))
-                if report["platform"] != platform or report["version"] != metadata["release_version"]:
+                if report["platform"] != platform or report["version"] != metadata["release_version"] or report["font"] != "Inter" or not report["font_embedded"]:
                     raise RuntimeError("O plugin/versão em execução não coincide com o pacote")
             database = home / "data" / "pod_manager.db"
             if not database.is_file():

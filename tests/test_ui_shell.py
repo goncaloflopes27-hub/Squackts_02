@@ -9,14 +9,24 @@ from unittest.mock import patch
 
 from PySide6.QtCore import QCoreApplication, QEvent, Qt, qInstallMessageHandler
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QAbstractItemView, QApplication, QLineEdit, QStyleOptionViewItem, QWidget
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QApplication,
+    QDialog,
+    QLineEdit,
+    QStyleOptionViewItem,
+    QTableWidgetItem,
+    QWidget,
+)
 
 from config import AppPaths
 from service_container import bootstrap_infrastructure
 from ui.animations import animate_dialog_close, fade_in
-from ui.components import DataTable, InfoRow
+from ui.components import DataTable, InfoRow, RecordTable
+from ui.dialogs import OrderEditorDialog
 from ui.main_window import MainWindow
 from ui.preferences import PreferencesDialog
+from ui.storage import shutdown_storage
 
 
 class UiShellTests(unittest.TestCase):
@@ -64,7 +74,7 @@ class UiShellTests(unittest.TestCase):
 
     def test_all_six_pages_refresh_repeatedly_without_deleted_widgets_or_invalid_styles(self) -> None:
         for _ in range(3):
-            for key in self.window.page_refs:
+            for key in self.window.page_map:
                 self.window.navigate(key)
                 self.window.refresh_current()
                 self.app.processEvents()
@@ -130,7 +140,7 @@ class UiShellTests(unittest.TestCase):
 
     def test_preferences_persist_and_reduced_motion_finishes_callbacks(self) -> None:
         dialog = PreferencesDialog(self.container.preferences, self.window)
-        dialog.reduce_motion.setChecked(True)
+        dialog.motion_mode.setCurrentIndex(1)
         dialog.compact_sidebar.setChecked(True)
         dialog._save()
         self.window._apply_preferences()
@@ -164,6 +174,13 @@ class UiShellTests(unittest.TestCase):
         QTest.keyClick(self.window, Qt.Key.Key_3, Qt.KeyboardModifier.AltModifier)
         self.assertEqual(self.window.current_page_key, "products")
         QTest.keyClick(self.window, Qt.Key.Key_K, Qt.KeyboardModifier.ControlModifier)
+        self.app.processEvents()
+        self.assertTrue(self.window.command_palette.isVisible())
+        self.assertTrue(self.window.command_palette.search.hasFocus())
+        self.window.command_palette.reject()
+        self.window.activateWindow()
+        QTest.qWait(20)
+        self.window._focus_search()
         self.assertTrue(self.window.topbar.search.hasFocus())
         self.window.topbar.alerts_button.click()
         self.assertEqual(self.window.current_page_key, "dashboard")
@@ -173,6 +190,58 @@ class UiShellTests(unittest.TestCase):
         self.window.resize(1280, 800)
         self.app.processEvents()
         self.assertTrue(self.window.sidebar._compact)
+
+    def test_pages_are_lazy_and_search_is_debounced(self) -> None:
+        self.assertEqual(set(self.window.page_refs), {"dashboard"})
+        self.window.navigate("clients")
+        page = self.window.page_refs["clients"]
+        with patch.object(page, "apply_search", wraps=page.apply_search) as search:
+            self.window.topbar.search.setText("A")
+            self.window.topbar.search.setText("Au")
+            self.window.topbar.search.setText("Aurora")
+            self.assertEqual(search.call_count, 0)
+            QTest.qWait(320)
+            search.assert_called_once_with("Aurora")
+        original = page
+        self.window.navigate("dashboard")
+        self.window.navigate("clients")
+        self.assertIs(self.window.page_refs["clients"], original)
+
+    def test_sorting_money_keeps_selection_bound_to_the_original_record(self) -> None:
+        table = RecordTable(3, 2)
+        table.setHorizontalHeaderLabels(["Cliente", "Total"])
+        for index, (name, total) in enumerate([("Maior", "100,00 €"), ("Menor", "9,00 €"), ("Médio", "20,00 €")]):
+            table.setItem(index, 0, QTableWidgetItem(name))
+            table.setItem(index, 1, QTableWidgetItem(total))
+        table.sortByColumn(1, Qt.SortOrder.AscendingOrder)
+        self.assertEqual(table.model().index(0, 0).data(), "Menor")
+        table.selectRow(0)  # Source row 0 is still Maior after sorting.
+        self.assertEqual(table.selectedItems()[0].row(), 0)
+        table.copy_selection()
+        self.assertIn("Maior", self.app.clipboard().text())
+        table.deleteLater()
+
+    def test_new_order_draft_recovers_without_creating_a_commercial_order(self) -> None:
+        dialog = OrderEditorDialog(self.container.orders, self.container.clients, self.container.products, parent=self.window, initial_client_id=self.client_id)
+        dialog.notes.input.setPlainText("Texto por terminar")
+        dialog._add_item()
+        dialog.local_draft._detect_changes()
+        dialog.local_draft._save()
+        shutdown_storage()
+        path = self.container.db_path.parent / "ui-order-draft.json"
+        self.assertTrue(path.is_file())
+        self.assertEqual(self.container.conn.execute("SELECT COUNT(*) FROM orders").fetchone()[0], 1)
+        QDialog.reject(dialog)
+        recovered = OrderEditorDialog(self.container.orders, self.container.clients, self.container.products, parent=self.window)
+        shutdown_storage()
+        recovered.local_draft._poll()
+        recovered.local_draft._restore()
+        self.assertEqual(recovered.notes.text(), "Texto por terminar")
+        self.assertEqual(len(recovered.items_buffer), 1)
+        self.assertEqual(self.container.conn.execute("SELECT COUNT(*) FROM orders").fetchone()[0], 1)
+        QDialog.reject(recovered)
+        dialog.deleteLater()
+        recovered.deleteLater()
 
 
 if __name__ == "__main__":

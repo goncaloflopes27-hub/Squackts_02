@@ -3,8 +3,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import Property, QEasingCurve, QPropertyAnimation, QRect, QSize, Qt
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import Property, QEasingCurve, QPropertyAnimation, QRect, QSize, Qt, QTimer
+from PySide6.QtGui import QIcon, QResizeEvent
 from PySide6.QtWidgets import QButtonGroup, QFrame, QLabel, QVBoxLayout, QWidget
 
 from config import APP_DISPLAY_VERSION
@@ -46,7 +46,7 @@ class Sidebar(QFrame):
         self._layout.addWidget(self.tagline)
         self._layout.addSpacing(SPACING.xl)
         self.section = QLabel("OPERAÇÃO")
-        self.section.setStyleSheet(f"font-size:12px; color:{COLORS.text_muted}; padding:0 10px 6px;")
+        self.section.setStyleSheet(f"font-size:12px; color:{COLORS.text_secondary}; padding:0 10px 6px;")
         self._layout.addWidget(self.section)
         for number, (key, label) in enumerate(PAGES, start=1):
             button = SidebarButton(label)
@@ -62,7 +62,7 @@ class Sidebar(QFrame):
         self._layout.addStretch(1)
         self.footer = QLabel(f"Local · v{APP_DISPLAY_VERSION}")
         self.footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.footer.setStyleSheet(f"color:{COLORS.text_muted}; font-size:12px;")
+        self.footer.setStyleSheet(f"color:{COLORS.text_secondary}; font-size:12px;")
         self._layout.addWidget(self.footer)
         self._width_animation = QPropertyAnimation(self, b"sidebarWidth", self)
         self._width_animation.setDuration(220)
@@ -80,6 +80,8 @@ class Sidebar(QFrame):
         if key in self._buttons:
             self._buttons[key].setChecked(True)
             button = self._buttons[key]
+            if self.isVisible():
+                button.setFocus(Qt.FocusReason.ShortcutFocusReason)
             target = QRect(button.pos(), button.size())
             self._indicator_animation.stop()
             if self.isVisible() and not reduced_motion(self):
@@ -104,7 +106,8 @@ class Sidebar(QFrame):
         self.brand.setText("ST" if compact else f'Squack<span style="color:{COLORS.primary}">TS</span>')
         self.tagline.setVisible(not compact)
         self.section.setVisible(not compact)
-        self.footer.setText(f"v{APP_DISPLAY_VERSION}" if compact else f"Local · v{APP_DISPLAY_VERSION}")
+        self.footer.setToolTip(f"Versão {APP_DISPLAY_VERSION}")
+        self.footer.setText(f"v{APP_DISPLAY_VERSION.split('-rc.')[0]}" if compact else f"Local · v{APP_DISPLAY_VERSION}")
         for key, label in PAGES:
             button = self._buttons[key]
             button.setText("" if compact else label)
@@ -120,3 +123,13 @@ class Sidebar(QFrame):
         self.setFixedWidth(value)
 
     sidebarWidth = Property(int, _get_sidebar_width, _set_sidebar_width)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        if hasattr(self, "indicator"):
+            QTimer.singleShot(0, self._align_indicator)
+
+    def _align_indicator(self) -> None:
+        button = self._group.checkedButton()
+        if button is not None:
+            self.indicator.setGeometry(QRect(button.pos(), button.size()))

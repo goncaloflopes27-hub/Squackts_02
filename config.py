@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 APP_NAME: str = "SquackTS"
-APP_VERSION: str = "0.3.1"
+APP_VERSION: str = "0.3.2"
 WINDOW_MIN_WIDTH: int = 1280
 WINDOW_MIN_HEIGHT: int = 800
 BASE_DIR: Path = Path(__file__).resolve().parent

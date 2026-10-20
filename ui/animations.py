@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import QEasingCurve, QParallelAnimationGroup, QPropertyAnimation, Qt, QTimer
+from PySide6.QtCore import QEasingCurve, QParallelAnimationGroup, QPropertyAnimation, QRect, Qt, QTimer
 from PySide6.QtWidgets import QApplication, QDialog, QGraphicsOpacityEffect, QWidget
 
 
@@ -20,10 +20,20 @@ def reduced_motion(widget: QWidget | None = None) -> bool:
     return bool(app and app.property("reduceMotion"))
 
 
+def _duration(widget: QWidget, duration: int) -> int:
+    app = QApplication.instance()
+    mode = str(app.property("motionMode") or "full") if app else "full"
+    if mode == "off":
+        return 0
+    if reduced_motion(widget):
+        return min(duration, 120) if widget.property("essentialMotion") else 0
+    return duration
+
+
 def _opacity_animation(widget: QWidget, start: float, end: float, duration: int) -> QPropertyAnimation:
     if isinstance(widget, QDialog):
         animation = QPropertyAnimation(widget, b"windowOpacity", widget)
-        animation.setDuration(0 if reduced_motion(widget) else duration)
+        animation.setDuration(_duration(widget, duration))
         animation.setStartValue(start)
         animation.setEndValue(end)
         animation.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -47,7 +57,7 @@ def _opacity_animation(widget: QWidget, start: float, end: float, duration: int)
         widget.setGraphicsEffect(effect)
     effect.setOpacity(start)
     animation = QPropertyAnimation(effect, b"opacity", widget)
-    animation.setDuration(0 if reduced_motion(widget) else duration)
+    animation.setDuration(_duration(widget, duration))
     animation.setStartValue(start)
     animation.setEndValue(end)
     animation.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -71,7 +81,40 @@ def slide_and_fade_in(widget: QWidget, x_offset: int = 18, duration: int = Motio
 
 
 def animate_dialog_open(dialog: QWidget) -> QParallelAnimationGroup:
-    return slide_and_fade_in(dialog, x_offset=0, duration=Motion.FAST)
+    from ui.theme import COLORS, translucent
+    group = QParallelAnimationGroup(dialog)
+    group.addAnimation(_opacity_animation(dialog, 1.0 if reduced_motion(dialog) else 0.0, 1.0, Motion.NORMAL))
+    dialog._open_animation = group  # type: ignore[attr-defined]
+    parent = dialog.parentWidget()
+    if isinstance(dialog, QDialog) and parent is not None:
+        backdrop = QWidget(parent.window())
+        backdrop.setGeometry(parent.window().rect())
+        backdrop.setStyleSheet(f"background:{translucent(COLORS.background, 190)};")
+        backdrop.show()
+        backdrop.raise_()
+        dialog.finished.connect(backdrop.hide)
+        dialog.finished.connect(backdrop.deleteLater)
+        dialog._backdrop = backdrop  # type: ignore[attr-defined]
+    timer = QTimer(dialog)
+    timer.setSingleShot(True)
+
+    def start() -> None:
+        if dialog.isWindow() and not reduced_motion(dialog):
+            target = dialog.geometry()
+            small = QRect(0, 0, round(target.width() * 0.97), round(target.height() * 0.97))
+            small.moveCenter(target.center())
+            geometry = QPropertyAnimation(dialog, b"geometry", group)
+            geometry.setDuration(Motion.NORMAL)
+            geometry.setStartValue(small)
+            geometry.setEndValue(target)
+            geometry.setEasingCurve(QEasingCurve.Type.OutCubic)
+            group.addAnimation(geometry)
+        group.start()
+        timer.deleteLater()
+
+    timer.timeout.connect(start)
+    timer.start(0)
+    return group
 
 
 def animate_dialog_close(dialog: QWidget, on_finished: Callable[[], None]) -> QPropertyAnimation:

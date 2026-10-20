@@ -20,6 +20,7 @@ _ACTIVE_TOASTS: dict[int, list[ToastMessage]] = {}
 class ToastMessage(QFrame):
     def __init__(self, text: str, tone: str = "info", parent: QWidget | None = None, undo: Callable[[], None] | None = None) -> None:
         super().__init__(parent)
+        self.setProperty("essentialMotion", True)
         palette = {"info": COLORS.info, "ok": COLORS.success, "danger": COLORS.danger, "warning": COLORS.warning}
         color = palette.get(tone, COLORS.info)
         self.setStyleSheet(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QLocale, Qt
+from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ui.animations import animate_dialog_open
 from ui.theme import COLORS, SPACING
 from ui.widgets.cards import InfoRow
 from ui.widgets.common import _caption, clear_layout
@@ -29,7 +31,10 @@ class ConfirmationDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(SPACING.lg, SPACING.lg, SPACING.lg, SPACING.lg)
         layout.setSpacing(SPACING.md)
-        layout.addWidget(QLabel(message))
+        message_label = QLabel(message)
+        message_label.setWordWrap(True)
+        message_label.setTextFormat(Qt.TextFormat.PlainText)
+        layout.addWidget(message_label)
         buttons = QHBoxLayout()
         cancel = SecondaryButton("Cancelar")
         confirm = DangerButton("Confirmar")
@@ -39,6 +44,10 @@ class ConfirmationDialog(QDialog):
         buttons.addWidget(cancel)
         buttons.addWidget(confirm)
         layout.addLayout(buttons)
+
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        animate_dialog_open(self)
 
 
 class ErrorText(QLabel):
@@ -231,6 +240,7 @@ class FormActions(QWidget):
         self.cancel_button = SecondaryButton(cancel_text)
         self.confirm_button = PrimaryButton(confirm_text)
         self.confirm_button.setDefault(True)
+        self.confirm_button.setToolTip("Guardar alterações · Ctrl+S")
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, SPACING.sm, 0, 0)
         layout.addStretch(1)

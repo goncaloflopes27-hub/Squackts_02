@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
-    QProgressBar,
     QScrollArea,
     QSizePolicy,
     QVBoxLayout,
@@ -23,6 +22,7 @@ from ui.theme import COLORS, RADIUS, SPACING
 from ui.widgets.common import clear_layout
 from ui.widgets.controls import AppCard, ElevatedCard, IconButton, PanelHeader, PrimaryButton, StatPill
 from ui.widgets.flow_layout import FlowLayout
+from ui.widgets.skeleton import Skeleton
 
 
 class KPIWidget(AppCard):
@@ -42,6 +42,7 @@ class KPIWidget(AppCard):
         layout.addWidget(top)
         self.value_label = QLabel(value)
         self.value_label.setMinimumHeight(44)
+        self.value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.value_label.setStyleSheet("font-size:28px; font-weight:600;")
         layout.addWidget(self.value_label)
         hint = QLabel(delta)
@@ -298,14 +299,7 @@ class LoadingState(AppCard):
         super().__init__()
         layout: QVBoxLayout = self.layout()  # type: ignore[assignment]
         layout.addWidget(QLabel(text))
-        progress = QProgressBar()
-        progress.setRange(0, 0)
-        progress.setTextVisible(False)
-        progress.setStyleSheet(
-            f"QProgressBar {{background:{COLORS.surface_alt}; border:0; border-radius:{RADIUS.sm}px; min-height:8px;}}"
-            f"QProgressBar::chunk {{background:{COLORS.primary}; border-radius:{RADIUS.sm}px;}}"
-        )
-        layout.addWidget(progress)
+        layout.addWidget(Skeleton(self))
 
 
 class ActivityList(AppCard):

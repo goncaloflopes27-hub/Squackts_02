@@ -41,7 +41,7 @@ class TopBar(QFrame):
         self.subtitle.setStyleSheet(f"font-size:12px; color:{COLORS.text_secondary};")
         row.addWidget(self.subtitle)
         row.addStretch(1)
-        self.commands_button = IconButton("Comandos  Ctrl+F")
+        self.commands_button = IconButton("Comandos  Ctrl+K")
         self.commands_button.setToolTip("Comandos e pesquisa rápida · Ctrl+K")
         self.commands_button.clicked.connect(self.commands_requested.emit)
         row.addWidget(self.commands_button)
@@ -61,7 +61,7 @@ class TopBar(QFrame):
         root.addLayout(row)
         self.search = SearchInput("Pesquisar…")
         self.search.setObjectName("ContextSearch")
-        self.search.setToolTip("Pesquisar nesta página · Ctrl+K")
+        self.search.setToolTip("Pesquisar nesta página · Ctrl+F")
         self.search.textChanged.connect(self.search_changed.emit)
         search_row = QHBoxLayout()
         search_row.setSpacing(SPACING.sm)
@@ -93,6 +93,7 @@ class TopBar(QFrame):
         self._primary_callback = primary_action
         self.primary_action.setText(primary_action_label)
         self.primary_action.setAccessibleName(primary_action_label)
+        self.primary_action.setToolTip(f"{primary_action_label} · Ctrl+N" if primary_action_label.startswith(("Nova", "Novo")) else f"{primary_action_label} · F5")
         self.primary_action.setEnabled(primary_action is not None)
         self._secondary_callback = secondary_action
         self.secondary_action.setVisible(bool(secondary_action_label and secondary_action))

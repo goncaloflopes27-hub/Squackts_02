@@ -6,12 +6,12 @@ from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QTableWidgetItem, QVBoxL
 
 from services.dashboard_service import DashboardService
 from ui.components import (
-    DataTable,
     ElevatedCard,
     InfoRow,
     KPIWidget,
     PageHeader,
     PanelHeader,
+    RecordTable,
     SecondaryButton,
     clear_layout,
 )
@@ -42,7 +42,7 @@ class DashboardPage(QWidget):
         recent_layout = self.recent_card.layout()
         assert recent_layout is not None
         recent_layout.addWidget(PanelHeader("Encomendas recentes", "Pesquisa por número, cliente ou estado"))
-        self.recent_table = DataTable(0, 6)
+        self.recent_table = RecordTable(0, 6)
         self.recent_table.setHorizontalHeaderLabels(["Número", "Cliente", "Estado", "Pagamento", "Total", "Atualizada"])
         self.recent_table.horizontalHeader().setStretchLastSection(True)
         recent_layout.addWidget(self.recent_table)
@@ -104,6 +104,7 @@ class DashboardPage(QWidget):
             if not self.search_text
             or self.search_text in f"{row['numero']} {row['client_nome']} {row['estado']}".lower()
         ]
+        self.recent_table.blockSignals(True)
         self.recent_table.setRowCount(len(rows))
         for i, row in enumerate(rows):
             values = [
@@ -116,6 +117,7 @@ class DashboardPage(QWidget):
             ]
             for j, value in enumerate(values):
                 self.recent_table.setItem(i, j, QTableWidgetItem(value))
+        self.recent_table.blockSignals(False)
         layout = self.production_card.layout()
         assert layout is not None
         clear_layout(layout, start_index=1)

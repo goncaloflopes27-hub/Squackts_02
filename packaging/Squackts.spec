@@ -59,3 +59,5 @@ validation_dir = distribution / "docs"
 validation_dir.mkdir(exist_ok=True)
 copy2(project_root / "docs" / "VALIDACAO.md", validation_dir / "VALIDACAO.md")
 copy2(project_root / "docs" / "REVISAO_EXTERNA.md", validation_dir / "REVISAO_EXTERNA.md")
+
+copy2(project_root / "docs" / "REDESENHO_UI.md", validation_dir / "REDESENHO_UI.md")

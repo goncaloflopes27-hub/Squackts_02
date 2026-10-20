@@ -35,6 +35,7 @@ class PreferencesDialog(QDialog):
     def __init__(self, store: PreferenceStore, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.store = store
+        self.motion_store = getattr(parent, "motion_preferences", store)
         self.setWindowTitle("Preferências")
         self.setModal(True)
         self.resize(480, 300)
@@ -46,7 +47,7 @@ class PreferencesDialog(QDialog):
         self.motion_mode = QComboBox()
         self.motion_mode.addItems(["Completas", "Reduzidas", "Desligadas"])
         fallback = "reduced" if store.get("ui.reduce_motion", "0") == "1" else "full"
-        mode = store.get("ui.motion_mode", fallback)
+        mode = self.motion_store.get("ui.motion_mode", fallback)
         self.motion_mode.setCurrentIndex({"full": 0, "reduced": 1, "off": 2}.get(mode, 0))
         self.motion_mode.setAccessibleName("Nível de animações")
         root.addWidget(self.motion_mode)
@@ -69,7 +70,7 @@ class PreferencesDialog(QDialog):
 
     def _save(self) -> None:
         try:
-            self.store.set("ui.motion_mode", ["full", "reduced", "off"][self.motion_mode.currentIndex()])
+            self.motion_store.set("ui.motion_mode", ["full", "reduced", "off"][self.motion_mode.currentIndex()])
             self.store.set("ui.reduce_motion", "1" if self.motion_mode.currentIndex() else "0")
             self.store.set("ui.compact_sidebar", "1" if self.compact_sidebar.isChecked() else "0")
         except (ValueError, OSError) as exc:

@@ -199,6 +199,12 @@ class OrderEditorDialog(EditorDialog):
         if initial_client_id is not None:
             self._select_client(initial_client_id)
         self._mark_clean()
+        self.local_draft = None
+        shell = parent.window() if parent is not None else None
+        container = getattr(shell, "container", None)
+        if order is None and container is not None:
+            from ui.order_draft import OrderDraft
+            self.local_draft = OrderDraft(self, container.db_path.parent / "ui-order-draft.json")
 
     def _load_variants(self) -> None:
         product_id = self._parse_selected_id(self.product_combo.value())

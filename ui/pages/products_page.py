@@ -13,7 +13,6 @@ from services.product_service import ProductService
 from ui.components import (
     ActivityList,
     ConfirmationDialog,
-    DataTable,
     DetailPanel,
     EmptyState,
     InfoRow,
@@ -21,6 +20,7 @@ from ui.components import (
     PanelHeader,
     PlaceholderThumbnail,
     PrimaryButton,
+    RecordTable,
     SearchInput,
     SecondaryButton,
     Toolbar,
@@ -85,7 +85,7 @@ class ProductsPage(QWidget):
         table_layout.setContentsMargins(0, 0, 0, 0)
         table_layout.addWidget(PanelHeader("Produtos", "Preços e disponibilidade num só olhar"))
 
-        self.table = DataTable(0, 7)
+        self.table = RecordTable(0, 7)
         self.table.setHorizontalHeaderLabels(["Produto", "SKU", "Produção", "Preço", "Custo", "Margem", "Disponível"])
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.itemSelectionChanged.connect(self._on_selection_changed)

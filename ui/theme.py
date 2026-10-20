@@ -38,7 +38,7 @@ class RadiusTokens:
     sm: int = 8
     md: int = 12
     lg: int = 16
-    xl: int = 20
+    xl: int = 16
     pill: int = 999
 
 
@@ -121,6 +121,7 @@ def app_stylesheet() -> str:
         padding: 8px 12px;
         color: {c.text_primary};
         selection-background-color: {c.primary};
+        selection-color: {c.on_primary};
         min-height: 20px;
     }}
     QTextEdit, QPlainTextEdit {{

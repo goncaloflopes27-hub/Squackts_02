@@ -10,13 +10,13 @@ from services.production_service import ProductionService
 from ui.components import (
     ActivityList,
     ConfirmationDialog,
-    DataTable,
     DetailPanel,
     EmptyState,
     InfoRow,
     PageHeader,
     PanelHeader,
     PrimaryButton,
+    RecordTable,
     SearchInput,
     SecondaryButton,
     Toolbar,
@@ -59,7 +59,7 @@ class ProductionPage(QWidget):
         self.mark_ship.clicked.connect(lambda: self.navigate_requested.emit("orders", "pronta_envio"))
         root.addWidget(Toolbar(self.search_input, self.mark_prod, self.mark_qc, self.mark_ship))
         body = QHBoxLayout()
-        self.table = DataTable(0, 6)
+        self.table = RecordTable(0, 6)
         self.table.setHorizontalHeaderLabels(["Encomenda", "Cliente", "Itens", "Unidades", "Trabalho", "Estado"])
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.itemSelectionChanged.connect(self._on_selection)

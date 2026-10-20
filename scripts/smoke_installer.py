@@ -96,8 +96,9 @@ def smoke_installer(installer: Path, previous_installer: Path | None = None) -> 
                 seed_marker(home)
                 before = fingerprint(home)
                 with closing(sqlite3.connect(home / "data" / "pod_manager.db")) as connection:
-                    if connection.execute("PRAGMA user_version").fetchone()[0] != 6:
-                        raise RuntimeError("O instalador anterior nao criou o schema 6 esperado")
+                    baseline = json.loads((Path(__file__).parents[1] / "packaging/upgrade-baseline.json").read_text(encoding="utf-8"))
+                    if connection.execute("PRAGMA user_version").fetchone()[0] != baseline["schema_version"]:
+                        raise RuntimeError("O instalador anterior nao criou o schema esperado")
             install(installer, destination, root / "install.log")
             installed = True
             for item in shortcuts().values():
@@ -149,7 +150,7 @@ def smoke_installer(installer: Path, previous_installer: Path | None = None) -> 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("installer", type=Path)
-    parser.add_argument("--previous-installer", type=Path, help="Instalador 0.3.0 para ensaiar a atualizacao real")
+    parser.add_argument("--previous-installer", type=Path, help="Instalador anterior para ensaiar a atualizacao real")
     args = parser.parse_args()
     smoke_installer(args.installer, args.previous_installer)
     return 0

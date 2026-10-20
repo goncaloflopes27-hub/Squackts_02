@@ -24,6 +24,7 @@ from ui.components import (
     ConfirmationDialog,
     InfoGrid,
     KeyValueCard,
+    LoadingState,
     PageHeader,
     PrimaryButton,
     SecondaryButton,
@@ -58,6 +59,9 @@ class SystemPage(QWidget):
         self.restore_button = SecondaryButton("Restaurar backup…")
         self.restore_button.clicked.connect(self._restore_backup)
         root.addWidget(Toolbar(self.backup_button, diagnostics, self.restore_button))
+        self.loading = LoadingState("A tratar o pedido…")
+        self.loading.hide()
+        root.addWidget(self.loading)
         self.status = QLabel()
         self.status.setWordWrap(True)
         root.addWidget(self.status)
@@ -136,6 +140,7 @@ class SystemPage(QWidget):
 
     def _set_busy(self, busy: bool, message: str = "") -> None:
         self._busy = busy
+        self.loading.setVisible(busy)
         for button in (self.backup_button, self.verify_button, self.restore_button):
             button.setEnabled(not busy)
         if message:

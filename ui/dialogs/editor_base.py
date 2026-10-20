@@ -126,7 +126,7 @@ class EditorDialog(QDialog):
             return
         if self._baseline and self._snapshot() != self._baseline:
             dialog = ConfirmationDialog(
-                "Alterações por guardar", "Sair e descartar as alterações deste formulário?", self
+                "Alterações por guardar", ("Sair? O rascunho local fica disponível na próxima encomenda." if getattr(self, "local_draft", None) is not None else "Sair e descartar as alterações deste formulário?"), self
             )
             if not dialog.exec():
                 return

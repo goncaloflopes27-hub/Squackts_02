@@ -1,6 +1,6 @@
 {
-  "version": "0.3.0",
-  "schema_version": 6,
-  "url": "https://github.com/goncaloflopes27-hub/Squackts_02/releases/download/v0.3.0-rc.5/SquackTS-Setup-0.3.0-x64.exe",
-  "sha256": "ed73ac7047330a0e7d28d7b52f5f93701b274e4759f432db2318f3f0d2ed7fd5"
+  "version": "0.3.1-rc.8",
+  "schema_version": 7,
+  "url": "https://github.com/goncaloflopes27-hub/Squackts_02/releases/download/v0.3.1-rc.8/SquackTS-Setup-0.3.1-rc.8-x64.exe",
+  "sha256": "8ee1416f6e5fd56db156f2af0e85c63d6a7fe85301abaaaebd5fd8a645c8ba16"
 }

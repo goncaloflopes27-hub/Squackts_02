@@ -14,7 +14,6 @@ from services.product_service import ProductService
 from ui.components import (
     ActivityList,
     ConfirmationDialog,
-    DataTable,
     DetailPanel,
     EmptyState,
     InfoRow,
@@ -22,6 +21,7 @@ from ui.components import (
     PageHeader,
     PanelHeader,
     PrimaryButton,
+    RecordTable,
     SearchInput,
     SecondaryButton,
     Toolbar,
@@ -79,7 +79,7 @@ class ClientsPage(QWidget):
         split = QHBoxLayout()
         split.setSpacing(SPACING.md)
 
-        self.table = DataTable(0, 5)
+        self.table = RecordTable(0, 5)
         self.table.setHorizontalHeaderLabels(["Cliente", "Email", "Telefone", "NIF", "Morada"])
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.itemSelectionChanged.connect(self._on_selection_changed)

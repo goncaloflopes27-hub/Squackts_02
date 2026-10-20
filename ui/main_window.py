@@ -21,7 +21,7 @@ from config import APP_NAME, WINDOW_MIN_HEIGHT, WINDOW_MIN_WIDTH
 from service_container import ServiceContainer
 from ui.animations import PageTransition, reduced_motion
 from ui.command_palette import CommandPalette
-from ui.components import SearchInput, show_toast
+from ui.components import RecordTable, SearchInput, show_toast
 from ui.pages import ClientsPage, DashboardPage, OrdersPage, ProductionPage, ProductsPage, SystemPage
 from ui.preferences import LocalPreferences, PreferencesDialog
 from ui.sidebar import PAGES, Sidebar
@@ -54,6 +54,7 @@ class MainWindow(QMainWindow):
         self._unsubscribe: Callable[[], None] | None = None
         self._closing = False
         self.preferences = getattr(container, "preferences", None) or LocalPreferences(str(container.db_path.parent / "ui.ini"))
+        self.motion_preferences = LocalPreferences(str(container.db_path.parent / "ui-motion.ini"))
         root = QWidget()
         root.setObjectName("MainFrame")
         self.setCentralWidget(root)
@@ -80,6 +81,11 @@ class MainWindow(QMainWindow):
         self.page_refs: dict[str, QWidget] = {}
         self.page_scrolls: dict[str, QScrollArea] = {}
         self._register_pages()
+        self._pending_search: tuple[str, str] | None = None
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(250)
+        self._search_timer.timeout.connect(self._flush_search)
         self._refresh_timer = QTimer(self)
         self._refresh_timer.setSingleShot(True)
         self._refresh_timer.timeout.connect(self._flush_invalidations)
@@ -94,49 +100,63 @@ class MainWindow(QMainWindow):
 
     def _register_pages(self) -> None:
         images = getattr(self.container, "images", None)
-        pages = {
-            "dashboard": DashboardPage(self.container.dashboard),
-            "orders": OrdersPage(self.container.orders, self.container.clients, self.container.products, image_service=images),
-            "products": ProductsPage(self.container.products, image_service=images),
-            "clients": ClientsPage(self.container.clients, self.container.orders, self.container.products, image_service=images),
-            "production": ProductionPage(self.container.production, inventory_service=getattr(self.container, "inventory", None)),
-            "system": SystemPage(self.container),
+        self._page_factories: dict[str, Callable[[], QWidget]] = {
+            "dashboard": lambda: DashboardPage(self.container.dashboard),
+            "orders": lambda: OrdersPage(self.container.orders, self.container.clients, self.container.products, image_service=images),
+            "products": lambda: ProductsPage(self.container.products, image_service=images),
+            "clients": lambda: ClientsPage(self.container.clients, self.container.orders, self.container.products, image_service=images),
+            "production": lambda: ProductionPage(self.container.production, inventory_service=getattr(self.container, "inventory", None)),
+            "system": lambda: SystemPage(self.container),
         }
-        for key, page in pages.items():
-            # Only the shell owns contextual text search; page filters remain local.
-            search = getattr(page, "search_input", None)
-            if isinstance(search, SearchInput):
-                search.hide()
-            # The contextual primary action lives in the header, not in duplicate toolbars.
-            for button in page.findChildren(QPushButton):
-                if button.text() in {"Nova encomenda", "Novo produto", "Novo cliente"}:
-                    button.hide()
-            empty = getattr(page, "empty", None)
-            create = getattr(page, "_open_create", None)
-            if empty is not None and callable(create):
-                empty.set_action({"orders": "Criar encomenda", "products": "Criar produto", "clients": "Criar cliente"}[key], create)
+        for key in self._page_factories:
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
             scroll.setFrameShape(QFrame.Shape.NoFrame)
             scroll.setStyleSheet("QScrollArea {border:none; background:transparent;}")
-            scroll.setWidget(page)
             self.page_map[key] = self.stack.addWidget(scroll)
-            self.page_refs[key] = page
             self.page_scrolls[key] = scroll
-        for page in pages.values():
-            navigation = getattr(page, "navigate_requested", None)
-            if navigation is not None:
-                navigation.connect(self.navigate_to_results)
+
+    def _ensure_page(self, key: str) -> bool:
+        if key in self.page_refs:
+            return False
+        page = self._page_factories[key]()
+        # Only the shell owns contextual text search; page filters remain local.
+        search = getattr(page, "search_input", None)
+        if isinstance(search, SearchInput):
+            search.hide()
+        # The contextual primary action lives in the header, not in duplicate toolbars.
+        for button in page.findChildren(QPushButton):
+            if button.text() in {"Nova encomenda", "Novo produto", "Novo cliente"}:
+                button.hide()
+        empty = getattr(page, "empty", None)
+        create = getattr(page, "_open_create", None)
+        if empty is not None and callable(create):
+            empty.set_action({"orders": "Criar encomenda", "products": "Criar produto", "clients": "Criar cliente"}[key], create)
+        for table in page.findChildren(RecordTable):
+            table.remember_layout(self.container.db_path.parent / f"ui-table-{key}.json")
+            page_layout = page.layout()
+            if isinstance(page_layout, QVBoxLayout):
+                page_layout.insertWidget(1, table.selection_bar)
+        self.page_scrolls[key].setWidget(page)
+        self.page_refs[key] = page
+        navigation = getattr(page, "navigate_requested", None)
+        if navigation is not None:
+            navigation.connect(self.navigate_to_results)
+        return True
 
     def navigate(self, page_key: str) -> None:
         if page_key not in self.page_map:
             return
+        self._flush_search()
+        created = self._ensure_page(page_key)
+        if created:
+            self._dirty.discard(page_key)
         previous = self.current_page_key
         self.current_page_key = page_key
         self.stack.setCurrentIndex(self.page_map[page_key])
         self.sidebar.set_current(page_key)
         self._sync_topbar(page_key)
-        if page_key in self._dirty or previous != page_key:
+        if not created and (page_key in self._dirty or previous != page_key):
             self._refresh_page(page_key)
         if previous != page_key:
             if not reduced_motion(self):
@@ -176,12 +196,22 @@ class MainWindow(QMainWindow):
     def _handle_global_search(self, text: str) -> None:
         key = self.current_page_key
         self._searches[key] = text
-        search = getattr(self.page_refs[key], "apply_search", None)
+        self._pending_search = (key, text)
+        self._search_timer.start()
+
+    def _flush_search(self) -> None:
+        pending = getattr(self, "_pending_search", None)
+        if pending is None:
+            return
+        self._pending_search = None
+        self._search_timer.stop()
+        key, text = pending
+        search = getattr(self.page_refs.get(key), "apply_search", None)
         if callable(search):
             try:
                 search(text)
             except Exception as exc:
-                show_toast(self, f"Não foi possível pesquisar: {exc}", "danger")
+                show_toast(self, f"Não foi possível pesquisar. Tenta novamente: {exc}", "danger")
 
     def invalidate_pages(self, *topics: str) -> None:
         if self._closing:
@@ -195,7 +225,7 @@ class MainWindow(QMainWindow):
             "settings": {"system"},
         }
         for topic in topics or ("all",):
-            self._dirty.update(self.page_refs if topic == "all" else dependencies.get(topic, {topic}))
+            self._dirty.update(self.page_map if topic == "all" else dependencies.get(topic, {topic}))
         if hasattr(self, "_refresh_timer"):
             self._refresh_timer.start(0)
 
@@ -235,10 +265,14 @@ class MainWindow(QMainWindow):
 
     def _apply_preferences(self) -> None:
         reduced = self.preferences.get("ui.reduce_motion", "0") == "1"
+        mode = self.motion_preferences.get("ui.motion_mode", "reduced" if reduced else "full")
+        reduced = mode != "full"
+        self.setProperty("motionMode", mode)
         self.setProperty("reduceMotion", reduced)
         app = QApplication.instance()
         if app:
             app.setProperty("reduceMotion", reduced)
+            app.setProperty("motionMode", mode)
         self._manual_compact = None
         self._apply_responsive()
 
@@ -247,9 +281,9 @@ class MainWindow(QMainWindow):
         self._apply_responsive()
 
     def _apply_responsive(self) -> None:
-        compact = self.preferences.get("ui.compact_sidebar", "0") == "1" or self.width() < 1480
+        compact = self.preferences.get("ui.compact_sidebar", "0") == "1" or self.width() < 1320
         self.sidebar.set_compact(compact if self._manual_compact is None else self._manual_compact)
-        self.topbar.set_compact(self.width() < 1480)
+        self.topbar.set_compact(self.width() < 1320)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
@@ -293,4 +327,7 @@ class MainWindow(QMainWindow):
             self._unsubscribe()
             self._unsubscribe = None
         self._refresh_timer.stop()
+        self._search_timer.stop()
+        from ui.storage import shutdown_storage
+        shutdown_storage()
         super().closeEvent(event)

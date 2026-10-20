@@ -1,3 +1,5 @@
+> **Apresentação 0.3.2:** novo tema, fonte Inter incluída, Ctrl+K para comandos, Ctrl+F para pesquisa e rascunho local nas novas encomendas. O instalador continua a criar os atalhos automaticamente. [Alterações e limites](docs/REDESENHO_UI.md) · [Capturas da interface](docs/screenshots/).
+
 # SquackTS
 
 Aplicação desktop local para gerir Print-on-Demand: catálogo, clientes, encomendas,

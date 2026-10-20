@@ -59,8 +59,9 @@ from ui.widgets.forms import (
     ModalHeader,
     SummaryCard,
 )
+from ui.widgets.record_table import RecordTable
 from ui.widgets.tables import (
     DataTable,
 )
 
-__all__ = ['ActivityList', 'AppCard', 'CONTROL_HEIGHT', 'ConfirmationDialog', 'DangerButton', 'DataTable', 'DetailPanel', 'DividerLabel', 'ElevatedCard', 'EmptyState', 'ErrorText', 'FilterBar', 'FilterChip', 'FormActions', 'FormRow', 'FormSection', 'GhostButton', 'IconButton', 'InfoGrid', 'InfoRow', 'InlineMetric', 'KPIWidget', 'KeyValueCard', 'LabeledComboBox', 'LabeledInput', 'LabeledMoneyField', 'LabeledSpinBox', 'LabeledTextArea', 'LoadingState', 'MetricTile', 'ModalHeader', 'PageHeader', 'PageSection', 'PanelHeader', 'PlaceholderThumbnail', 'PrimaryButton', 'RichEmptyState', 'RowActionBar', 'SearchInput', 'SecondaryButton', 'SegmentedControl', 'SidebarButton', 'StatPill', 'StatusBadge', 'SummaryCard', 'ToastMessage', 'Toolbar', 'apply_soft_shadow', 'clear_layout', 'show_toast']
+__all__ = ['ActivityList', 'AppCard', 'CONTROL_HEIGHT', 'ConfirmationDialog', 'DangerButton', 'DataTable', 'RecordTable', 'DetailPanel', 'DividerLabel', 'ElevatedCard', 'EmptyState', 'ErrorText', 'FilterBar', 'FilterChip', 'FormActions', 'FormRow', 'FormSection', 'GhostButton', 'IconButton', 'InfoGrid', 'InfoRow', 'InlineMetric', 'KPIWidget', 'KeyValueCard', 'LabeledComboBox', 'LabeledInput', 'LabeledMoneyField', 'LabeledSpinBox', 'LabeledTextArea', 'LoadingState', 'MetricTile', 'ModalHeader', 'PageHeader', 'PageSection', 'PanelHeader', 'PlaceholderThumbnail', 'PrimaryButton', 'RichEmptyState', 'RowActionBar', 'SearchInput', 'SecondaryButton', 'SegmentedControl', 'SidebarButton', 'StatPill', 'StatusBadge', 'SummaryCard', 'ToastMessage', 'Toolbar', 'apply_soft_shadow', 'clear_layout', 'show_toast']
