@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from functools import partial
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QObject, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QCloseEvent, QKeySequence, QResizeEvent, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -32,11 +32,15 @@ class _EventBridge(QObject):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, container: ServiceContainer) -> None:
+    def __init__(self, container: ServiceContainer, *, available_geometry: QRect | None = None) -> None:
         super().__init__()
         self.container = container
         self.setWindowTitle(APP_NAME)
         self.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
+        screen = self.screen()
+        if screen is not None:
+            available = available_geometry if available_geometry is not None else screen.availableGeometry()
+            self.setMinimumSize(min(WINDOW_MIN_WIDTH, max(320, available.width() - 24)), min(WINDOW_MIN_HEIGHT, max(320, available.height() - 48)))
         self.setStyleSheet(app_stylesheet())
         self.current_page_key = "dashboard"
         self._searches: dict[str, str] = {}

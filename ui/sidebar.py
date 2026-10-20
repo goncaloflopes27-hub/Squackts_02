@@ -7,7 +7,7 @@ from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QButtonGroup, QFrame, QLabel, QVBoxLayout, QWidget
 
-from config import APP_VERSION
+from config import APP_DISPLAY_VERSION
 from ui.components import SidebarButton
 from ui.theme import COLORS, SPACING
 
@@ -59,7 +59,7 @@ class Sidebar(QFrame):
             self._buttons[key] = button
             self._layout.addWidget(button)
         self._layout.addStretch(1)
-        self.footer = QLabel(f"Local · v{APP_VERSION}")
+        self.footer = QLabel(f"Local · v{APP_DISPLAY_VERSION}")
         self.footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.footer.setStyleSheet(f"color:{COLORS.text_muted}; font-size:11px;")
         self._layout.addWidget(self.footer)
@@ -77,7 +77,7 @@ class Sidebar(QFrame):
         self.brand.setText("ST" if compact else "SquackTS")
         self.tagline.setVisible(not compact)
         self.section.setVisible(not compact)
-        self.footer.setText(f"v{APP_VERSION}" if compact else f"Local · v{APP_VERSION}")
+        self.footer.setText(f"v{APP_DISPLAY_VERSION}" if compact else f"Local · v{APP_DISPLAY_VERSION}")
         for key, label in PAGES:
             button = self._buttons[key]
             button.setText("" if compact else label)

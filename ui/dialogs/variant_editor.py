@@ -71,24 +71,18 @@ class VariantEditorDialog(EditorDialog):
             self.reason.set_error("Explique a alteração para o histórico de stock")
             self.reason.input.setFocus()
             return
-        payload = self._payload()
-        if self.variant:
-            payload = {key: value for key, value in payload.items() if value != self._initial_values.get(key)}
-        self._saving = True
-        self.form_actions.confirm_button.setEnabled(False)
-        try:
+        def save() -> None:
+            payload = self._payload()
             if self.variant:
-                self.saved_id = int(self.variant["id"])
-                self.service.update_variant(self.saved_id, payload)
+                payload = {key: value for key, value in payload.items() if value != self._initial_values.get(key)}
+            if self.variant:
+                variant_id = int(self.variant["id"])
+                self.service.update_variant(variant_id, payload)
+                self.saved_id = variant_id
             else:
                 self.saved_id = self.service.create_variant(self.product_id, payload)
-        except (ValueError, OSError) as exc:
-            self._saving = False
-            self.form_actions.confirm_button.setEnabled(True)
-            self.error.set_error(str(exc))
-            self._reveal_error(self.error)
-            return
-        self._accept_saved()
+        if self._submit(save, self.error, self.form_actions.confirm_button, "Guardar variante"):
+            self._accept_saved()
 
     def _payload(self) -> dict[str, object]:
         return {

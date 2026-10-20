@@ -101,36 +101,24 @@ class ClientEditorDialog(EditorDialog):
     def _save(self) -> None:
         if self._saving or not self._validate_form():
             return
-        self._saving = True
-        self.form_actions.confirm_button.setEnabled(False)
-        self.form_actions.confirm_button.setText("A guardar...")
-        payload = {
-            "nome": self.name.text(),
-            "email": self.email.text(),
-            "telefone": self.phone.text(),
-            "nif": self.nif.text(),
-            "morada": self.address.text(),
-            "notas": self.notes.text(),
-            "ativo": int(self.client.get("ativo", 1)) if self.client else 1,
-        }
-        try:
+        def save() -> None:
+            payload = {
+                "nome": self.name.text(),
+                "email": self.email.text(),
+                "telefone": self.phone.text(),
+                "nif": self.nif.text(),
+                "morada": self.address.text(),
+                "notas": self.notes.text(),
+                "ativo": int(self.client.get("ativo", 1)) if self.client else 1,
+            }
             if self.client and self.client.get("id") is not None:
                 client_id = int(self.client["id"])
                 self.service.update_client(client_id, payload)
                 self.saved_id = client_id
             else:
                 self.saved_id = self.service.create_client(payload)
-        except (ValueError, OSError) as exc:
-            self.form_error.set_error(str(exc))
-            self._reveal_error(self.form_error)
-            self._saving = False
-            self.form_actions.confirm_button.setText("Guardar cliente")
-            self._validate_form()
-            return
-
-        self.form_error.set_error(None)
-        self.form_actions.confirm_button.setText("Guardado ✓")
-        self._accept_saved()
+        if self._submit(save, self.form_error, self.form_actions.confirm_button, "Guardar cliente"):
+            self._accept_saved()
 
     def _validate_form(self) -> bool:
         valid = True

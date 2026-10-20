@@ -52,7 +52,7 @@ class ProductionPage(QWidget):
         self.mark_qc.clicked.connect(
             lambda: self._change(
                 self.service.mark_produced,
-                "Concluir a preparação de todos os itens sem arte pendente e marcar a encomenda pronta para envio?",
+                "Confirma que TODOS os itens estão produzidos e passaram o controlo de qualidade? A ação é bloqueada se existir arte por aprovar.",
             )
         )
         self.mark_ship = SecondaryButton("Ver expedição")

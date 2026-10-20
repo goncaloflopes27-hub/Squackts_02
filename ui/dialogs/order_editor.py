@@ -425,55 +425,42 @@ class OrderEditorDialog(EditorDialog):
     def _save(self) -> None:
         if self._saving or not self._validate_form():
             return
-        self._saving = True
-        self.form_actions.confirm_button.setEnabled(False)
-        self.form_actions.confirm_button.setText("A guardar...")
-        client_id = self._parse_selected_id(self.client_combo.value())
-        if client_id <= 0:
-            self.error.set_error("Selecione um cliente válido")
-            return
-        if not self.items_buffer:
-            self.error.set_error("Adicione pelo menos um item")
-            return
 
-        payload = {
-            "client_id": client_id,
-            "estado": str(self.status.input.currentData()),
-            "pago": 1 if self.payment.input.currentIndex() == 1 else 0,
-            "tracking": self.tracking.text(),
-            "metodo_pagamento": "manual",
-            "portes": str(Decimal(str(self.shipping.value())).quantize(Decimal("0.01"))),
-            "data_prevista": self.deadline.date().toString("yyyy-MM-dd") if self.has_deadline.isChecked() else "",
-            "notas": self.notes.text(),
-            "items": [
-                {
-                    key: item[key]
-                    for key in ("product_id", "quantidade", "variant_id", "personalization", "artwork_path")
-                    if key in item
-                }
-                for item in self.items_buffer
-            ],
-            "idempotency_key": self._idempotency_key,
-        }
-        try:
+        def save() -> None:
+            client_id = self._parse_selected_id(self.client_combo.value())
+            if client_id <= 0:
+                raise ValueError("Selecione um cliente válido")
+            if not self.items_buffer:
+                raise ValueError("Adicione pelo menos um item")
+
+            payload = {
+                "client_id": client_id,
+                "estado": str(self.status.input.currentData()),
+                "pago": 1 if self.payment.input.currentIndex() == 1 else 0,
+                "tracking": self.tracking.text(),
+                "metodo_pagamento": "manual",
+                "portes": str(Decimal(str(self.shipping.value())).quantize(Decimal("0.01"))),
+                "data_prevista": self.deadline.date().toString("yyyy-MM-dd") if self.has_deadline.isChecked() else "",
+                "notas": self.notes.text(),
+                "items": [
+                    {
+                        key: item[key]
+                        for key in ("product_id", "quantidade", "variant_id", "personalization", "artwork_path")
+                        if key in item
+                    }
+                    for item in self.items_buffer
+                ],
+                "idempotency_key": self._idempotency_key,
+            }
             if self.order and self.order.get("id") is not None:
                 order_id = int(self.order["id"])
                 self.order_service.update_order(order_id, payload)
                 self.saved_id = order_id
             else:
                 self.saved_id = self.order_service.create_order(payload)
-        except (ValueError, OSError) as exc:
-            self._submission_error = str(exc)
-            self.error.set_error(self._submission_error)
-            self._reveal_error(self.error)
-            self._saving = False
-            self.form_actions.confirm_button.setText("Guardar encomenda")
-            self._validate_form()
-            return
 
-        self.error.set_error(None)
-        self.form_actions.confirm_button.setText("Guardado")
-        self._accept_saved()
+        if self._submit(save, self.error, self.form_actions.confirm_button, "Guardar encomenda"):
+            self._accept_saved()
 
     def _validate_form(self) -> bool:
         valid = True

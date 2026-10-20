@@ -183,13 +183,10 @@ class ProductEditorDialog(EditorDialog):
     def _save(self) -> None:
         if self._saving or not self._validate_form():
             return
-        self._saving = True
-        self.form_actions.confirm_button.setEnabled(False)
-        self.form_actions.confirm_button.setText("A guardar...")
-        payload = self._payload()
-        if self.product:
-            payload = {key: value for key, value in payload.items() if value != self._initial_values.get(key)}
-        try:
+        def save() -> None:
+            payload = self._payload()
+            if self.product:
+                payload = {key: value for key, value in payload.items() if value != self._initial_values.get(key)}
             if self._pending_image and self.image_service:
                 payload["image_path"] = self.image_service.import_image(self._pending_image).image_path
             if self.product and self.product.get("id") is not None:
@@ -198,17 +195,8 @@ class ProductEditorDialog(EditorDialog):
                 self.saved_id = product_id
             else:
                 self.saved_id = self.service.create_product(payload)
-        except (ValueError, OSError) as exc:
-            self.form_error.set_error(str(exc))
-            self._reveal_error(self.form_error)
-            self._saving = False
-            self.form_actions.confirm_button.setText("Guardar produto")
-            self._validate_form()
-            return
-
-        self.form_error.set_error(None)
-        self.form_actions.confirm_button.setText("Guardado ✓")
-        self._accept_saved()
+        if self._submit(save, self.form_error, self.form_actions.confirm_button, "Guardar produto"):
+            self._accept_saved()
 
     def _payload(self) -> dict[str, object]:
         return {

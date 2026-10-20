@@ -10,16 +10,18 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from config import APP_NAME, APP_VERSION, AppPaths
+from config import APP_DISPLAY_VERSION, APP_NAME, AppPaths
 
 
 def _arguments(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Gestão desktop de operações Print-on-Demand")
-    parser.add_argument("--version", action="version", version=f"%(prog)s {APP_VERSION}")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {APP_DISPLAY_VERSION}")
     parser.add_argument("--data-dir", type=Path, help="Diretório dos dados deste perfil")
     parser.add_argument("--demo", action="store_true", help="Abrir dados fictícios num perfil separado")
     parser.add_argument("--smoke-test", action="store_true", help="Verificar arranque e páginas e terminar")
     parser.add_argument("--screenshots", type=Path, help="Guardar capturas das seis páginas durante --smoke-test")
+    parser.add_argument("--expect-platform", help="Falhar a verificação se o plugin Qt carregado for diferente")
+    parser.add_argument("--smoke-default-profile", action="store_true", help="Usar o perfil configurado explicitamente no ensaio, em vez de dados temporários")
     return parser.parse_args(argv)
 
 
@@ -40,7 +42,7 @@ def _close_logging(handler: RotatingFileHandler) -> None:
 def main(argv: list[str] | None = None) -> int:
     args = _arguments(argv)
     with ExitStack() as resources:
-        if args.smoke_test and args.data_dir is None:
+        if args.smoke_test and args.data_dir is None and not args.smoke_default_profile:
             home = Path(resources.enter_context(TemporaryDirectory(prefix="squackts-smoke-")))
         elif args.data_dir is not None:
             home = args.data_dir.expanduser().resolve()
@@ -53,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
             from scripts.demo import seed_demo
             seed_demo(home)
         paths = AppPaths.from_home(home)
-        if args.smoke_test and not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
+        if args.smoke_test and sys.platform not in {"win32", "darwin"} and not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
             os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtCore import QLocale, QLockFile
         from PySide6.QtGui import QIcon
@@ -66,9 +68,11 @@ def main(argv: list[str] | None = None) -> int:
         if instance is not None and not isinstance(instance, QApplication):
             raise RuntimeError("A interface requer QApplication")
         qt = instance if isinstance(instance, QApplication) else QApplication([sys.argv[0]])
+        if args.expect_platform and qt.platformName() != args.expect_platform:
+            raise RuntimeError(f"Plugin Qt incorreto: {qt.platformName()}; esperado: {args.expect_platform}")
         qt.setApplicationName(APP_NAME)
         qt.setOrganizationName("Squack TS")
-        qt.setApplicationVersion(APP_VERSION)
+        qt.setApplicationVersion(APP_DISPLAY_VERSION)
         QLocale.setDefault(QLocale(QLocale.Language.Portuguese, QLocale.Country.Portugal))
         source_root = Path(__file__).resolve().parent
         bundle_root = Path(getattr(sys, "_MEIPASS", source_root))
@@ -83,6 +87,8 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError("Este perfil já está aberto noutra instância do SquackTS.")
             resources.callback(lock.unlock)
             resources.callback(_close_logging, _logging(paths))
+            from ui.error_reporting import install_exception_handler
+            resources.callback(install_exception_handler(qt, paths.log_file_path))
             container = bootstrap_infrastructure(paths, migrate_legacy=not args.demo and not args.smoke_test)
             resources.callback(container.close)
             window = MainWindow(container)

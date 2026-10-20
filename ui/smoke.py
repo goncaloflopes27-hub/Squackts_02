@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import traceback
 from pathlib import Path
@@ -82,5 +83,10 @@ class SmokeProbe(QObject):
             QTimer.singleShot(100, self._refresh_dashboard)
             return
         sys.excepthook = self._old_hook
+        if self.screenshots is not None:
+            screen = self.window.screen()
+            available = screen.availableGeometry() if screen is not None else self.window.geometry()
+            report = {"platform": self.application.platformName(), "version": self.application.applicationVersion(), "pages": list(self.window.page_map), "window": [self.window.width(), self.window.height()], "work_area": [available.width(), available.height()]}
+            (self.screenshots / "smoke-report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
         print("PASS: arranque, seis páginas, renderização e refresh repetido", flush=True)
         self.window.close()
