@@ -4,18 +4,47 @@ import csv
 from pathlib import Path
 from sqlite3 import Row
 
-from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QTableWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QComboBox, QFileDialog, QHBoxLayout, QTableWidgetItem, QVBoxLayout, QWidget
 
 from services.client_service import ClientService
-from ui.components import DataTable, DetailPanel, EmptyState, InfoRow, MetricTile, PageHeader, PanelHeader, PrimaryButton, SearchInput, Toolbar, show_toast
-from ui.dialogs import ClientEditorDialog
+from services.image_service import ImageService
+from services.order_queries import OrderQuery
+from services.order_service import OrderService
+from services.product_service import ProductService
+from ui.components import (
+    ActivityList,
+    ConfirmationDialog,
+    DetailPanel,
+    EmptyState,
+    InfoRow,
+    MetricTile,
+    PageHeader,
+    PanelHeader,
+    PrimaryButton,
+    RecordTable,
+    SearchInput,
+    SecondaryButton,
+    Toolbar,
+    show_toast,
+)
+from ui.dialogs import ClientEditorDialog, OrderEditorDialog
 from ui.theme import SPACING
+from utils import format_currency
 
 
 class ClientsPage(QWidget):
-    def __init__(self, service: ClientService) -> None:
+    def __init__(
+        self,
+        service: ClientService,
+        order_service: OrderService | None = None,
+        product_service: ProductService | None = None,
+        image_service: ImageService | None = None,
+    ) -> None:
         super().__init__()
         self.service = service
+        self.order_service = order_service
+        self.product_service = product_service
+        self.image_service = image_service
         self.clients: list[Row] = []
         self.clients_all: list[Row] = []
         self.selected_client_id: int | None = None
@@ -28,15 +57,18 @@ class ClientsPage(QWidget):
 
         new_button = PrimaryButton("Novo cliente")
         new_button.clicked.connect(self._open_create)
-        root.addWidget(PageHeader("Clientes", "Dados pessoais e comerciais com contexto de relacionamento."))
+        root.addWidget(PageHeader("Clientes", "Pessoas, contactos e o histórico de cada encomenda."))
         self.search_input = SearchInput("Pesquisar cliente por nome, email ou telefone...")
         self.search_input.textChanged.connect(self.apply_search)
-        self.export_button = PrimaryButton("Exportar CSV")
+        self.active_combo = QComboBox()
+        self.active_combo.addItems(["Ativos", "Arquivados", "Todos"])
+        self.active_combo.currentIndexChanged.connect(lambda _index: self.refresh())
+        self.export_button = SecondaryButton("Exportar CSV")
         self.export_button.clicked.connect(self._export_csv)
-        root.addWidget(Toolbar(self.search_input, self.export_button, new_button))
+        root.addWidget(Toolbar(self.search_input, self.active_combo, self.export_button, new_button))
 
         self.metrics_layout = QHBoxLayout()
-        self.metric_total = MetricTile("Clientes ativos", "0")
+        self.metric_total = MetricTile("Clientes na lista", "0")
         self.metric_emails = MetricTile("Com email", "0")
         self.metric_nif = MetricTile("Com NIF", "0")
         self.metrics_layout.addWidget(self.metric_total)
@@ -47,7 +79,7 @@ class ClientsPage(QWidget):
         split = QHBoxLayout()
         split.setSpacing(SPACING.md)
 
-        self.table = DataTable(0, 5)
+        self.table = RecordTable(0, 5)
         self.table.setHorizontalHeaderLabels(["Cliente", "Email", "Telefone", "NIF", "Morada"])
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.itemSelectionChanged.connect(self._on_selection_changed)
@@ -69,6 +101,9 @@ class ClientsPage(QWidget):
         self.refresh()
 
     def refresh(self, select_client_id: int | None = None) -> None:
+        select_client_id = select_client_id if select_client_id is not None else self.selected_client_id
+        scroll = self.table.verticalScrollBar().value()
+        self.table.blockSignals(True)
         try:
             self.clients_all = self.service.list_clients()
             self._loading_error = None
@@ -94,6 +129,7 @@ class ClientsPage(QWidget):
         self.metric_emails.set_value(str(with_email))
         self.metric_nif.set_value(str(with_nif))
 
+        self.table.blockSignals(False)
         is_empty = len(self.clients) == 0
         self.table.setVisible(not is_empty)
         self.empty.setVisible(is_empty)
@@ -116,17 +152,25 @@ class ClientsPage(QWidget):
                 if int(client["id"]) == select_client_id:
                     target_row = idx
                     break
+        self.table.blockSignals(True)
         self.table.selectRow(target_row)
+        self.table.blockSignals(False)
+        self.table.verticalScrollBar().setValue(scroll)
+        self._on_selection_changed()
 
     def apply_search(self, text: str) -> None:
         self.search_text = text.strip().lower()
         self.refresh()
 
     def _filtered_clients(self) -> list[Row]:
+        rows = list(self.clients_all)
+        if self.active_combo.currentIndex() != 2:
+            active = self.active_combo.currentIndex() == 0
+            rows = [row for row in rows if bool(int(row["ativo"])) == active]
         if not self.search_text:
-            return list(self.clients_all)
+            return rows
         filtered: list[Row] = []
-        for row in self.clients_all:
+        for row in rows:
             haystack = f"{row['nome']} {row['email']} {row['telefone']} {row['nif']} {row['morada']}".lower()
             if self.search_text in haystack:
                 filtered.append(row)
@@ -143,7 +187,9 @@ class ClientsPage(QWidget):
         try:
             with csv_path.open("w", newline="", encoding="utf-8") as handle:
                 writer = csv.writer(handle)
-                writer.writerow(["id", "nome", "email", "telefone", "nif", "morada", "ativo", "created_at", "updated_at"])
+                writer.writerow(
+                    ["id", "nome", "email", "telefone", "nif", "morada", "ativo", "created_at", "updated_at"]
+                )
                 for row in self.clients:
                     writer.writerow(
                         [
@@ -190,6 +236,31 @@ class ClientsPage(QWidget):
         edit_button = PrimaryButton("Editar cliente")
         edit_button.clicked.connect(self._open_edit)
         self.detail.add_content_widget(edit_button)
+        if int(client["ativo"]):
+            create = PrimaryButton("Nova encomenda para este cliente")
+            create.setEnabled(self.order_service is not None and self.product_service is not None)
+            create.clicked.connect(self._create_order)
+            self.detail.add_content_widget(create)
+            archive = SecondaryButton("Arquivar cliente")
+            archive.clicked.connect(self._archive_selected)
+            self.detail.add_content_widget(archive)
+        if self.order_service:
+            result = self.order_service.search_orders(OrderQuery(client_id=int(client["id"]), limit=20))
+            orders = result.rows
+            self.detail.add_content_widget(InfoRow("Encomendas", str(result.total)))
+            self.detail.add_content_widget(
+                ActivityList(
+                    "Encomendas recentes (até 20)",
+                    [
+                        (
+                            str(order["numero"]),
+                            f"{str(order['estado']).replace('_', ' ')} · {format_currency(order['total'])}",
+                        )
+                        for order in orders
+                    ]
+                    or [("Sem encomendas", "Este cliente ainda não tem encomendas.")],
+                )
+            )
 
     def _open_create(self) -> None:
         dialog = ClientEditorDialog(self.service, parent=self)
@@ -208,3 +279,33 @@ class ClientsPage(QWidget):
         if dialog.exec() and dialog.saved_id is not None:
             self.refresh(select_client_id=dialog.saved_id)
             show_toast(self, "Cliente atualizado", "ok")
+
+    def _create_order(self) -> None:
+        if self.selected_client_id is None or self.order_service is None or self.product_service is None:
+            return
+        dialog = OrderEditorDialog(
+            self.order_service,
+            self.service,
+            self.product_service,
+            parent=self,
+            initial_client_id=self.selected_client_id,
+            image_service=self.image_service,
+        )
+        if dialog.exec():
+            self.refresh()
+            show_toast(self, "Encomenda criada", "ok")
+
+    def _archive_selected(self) -> None:
+        if self.selected_client_id is None:
+            return
+        if not ConfirmationDialog(
+            "Arquivar cliente", "Retirar este cliente das novas encomendas, preservando o histórico?", self
+        ).exec():
+            return
+        try:
+            self.service.archive_client(self.selected_client_id)
+        except ValueError as exc:
+            show_toast(self, str(exc), "warning")
+            return
+        self.refresh()
+        show_toast(self, "Cliente arquivado", "ok")

@@ -1,0 +1,20 @@
+# Resolução para CPython 3.11 e 3.12, Linux/Windows/macOS.
+# Atualizar em conjunto com requirements*.txt e validar a matriz de CI.
+PySide6==6.10.2
+PySide6_Addons==6.10.2
+PySide6_Essentials==6.10.2
+shiboken6==6.10.2
+Pillow==12.0.0
+ruff==0.14.0
+mypy==1.18.2
+mypy_extensions==1.1.0
+pathspec==0.12.1
+typing_extensions==4.15.0
+pyinstaller==6.16.0
+pyinstaller-hooks-contrib==2025.9
+altgraph==0.17.4
+packaging==25.0
+setuptools==80.9.0
+pefile==2023.2.7; sys_platform == "win32"
+pywin32-ctypes==0.2.3; sys_platform == "win32"
+macholib==1.16.3; sys_platform == "darwin"

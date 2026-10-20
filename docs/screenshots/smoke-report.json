@@ -1,0 +1,22 @@
+{
+  "platform": "offscreen",
+  "version": "0.3.2",
+  "font": "Inter",
+  "font_embedded": true,
+  "pages": [
+    "dashboard",
+    "orders",
+    "products",
+    "clients",
+    "production",
+    "system"
+  ],
+  "window": [
+    1440,
+    900
+  ],
+  "work_area": [
+    800,
+    800
+  ]
+}

@@ -1,107 +1,34 @@
-Squackts POD Manager
-====================
+SquackTS
+===================
 
-Aplicação desktop local para gestão de operação Print-on-Demand com UI dark premium,
-arquitetura limpa e dados persistidos em SQLite.
+Gestão desktop local de Print-on-Demand com Python, PySide6 e SQLite.
+Catálogo -> Clientes -> Encomendas -> Produção -> Expedição -> Conclusão.
 
-Stack
------
-- Python 3.11+
-- PySide6
-- SQLite (sqlite3)
-- Pillow
+Windows, distribuição compilada:
+  Extraia a pasta completa e execute SquackTS.exe.
+  Mantenha a pasta _internal junto do executável. Não necessita de Python.
 
-Arquitetura
------------
-- `ui/` -> interface (sem SQL direto)
-- `services/` -> regras de negócio, validações, transações e logs
-- `repositories/` -> SQL parametrizado
-- `db.py`/`schema.py` -> infraestrutura de dados e migrações idempotentes
+Windows, desenvolvimento:
+  Instale Python 3.11 ou 3.12 e abra abrir_squackts.bat.
 
-Estrutura principal
--------------------
-- `app.py` -> entrypoint
-- `config.py` -> tokens/configuração geral
-- `db.py` -> conexão/transações/backup
-- `schema.py` -> schema + migrações idempotentes
-- `service_container.py` -> bootstrap de infraestrutura e DI simples
-- `utils.py` -> utilitários comuns
+Instalação manual:
+  python -m venv .venv
+  Ative .venv (Scripts\Activate.ps1 no Windows; bin/activate no Linux/macOS).
+  python -m pip install -r requirements-dev.txt
+  python app.py
 
-Domínio implementado
---------------------
-- Money em centavos (`*_cents`) com conversão segura e arredondamento `ROUND_HALF_UP`.
-- Numeração anual de encomendas: `ENC-YYYY-0001` (continua além de 4 dígitos quando necessário).
-- Fluxo de encomendas com criação, edição, duplicação, tracking e cancelamento idempotente.
-- Estados iniciais permitidos na criação: `rascunho` e `confirmada`.
-- Tracking permitido apenas a partir de `pronta_envio`, e obrigatório em `expedida`/`concluida`.
-- Estados `paga`, `expedida` e `concluida` exigem `pago=1`.
-- Edição bloqueada para `expedida`, `concluida` e `cancelada`.
-- Regras de stock por tipo de produção:
-  - `print_on_demand` -> não desconta stock
-  - `stock_fisico` -> exige stock e desconta
-  - `misto` -> desconta quando há stock suficiente
-- Produção com transições válidas de estado e logging.
-- Migração de schemas legados (REAL -> cents) com validação de foreign keys.
+Teste sem dados reais:
+  python -m scripts.demo --launch
 
-Setup rápido
-------------
-1. Criar ambiente virtual:
-   - `python -m venv .venv`
-2. Ativar ambiente:
-   - Windows: `.venv\\Scripts\\activate`
-   - Linux/macOS: `source .venv/bin/activate`
-3. Instalar dependências runtime:
-   - `pip install -r requirements.txt`
-4. (Opcional, recomendado) instalar dependências de qualidade:
-   - `pip install -r requirements-dev.txt`
-5. Arrancar aplicação:
-   - `python app.py`
+Dados no Windows: %LOCALAPPDATA%\Squackts
+Outras pastas e instalação isolada: consulte README.md / SQUACKTS_DATA_HOME.
+Crie backups em Sistema e guarde uma cópia fora do computador.
+Atualize apenas os ficheiros da aplicação, preservando a pasta de dados.
 
-Arranque fácil no Windows
--------------------------
-- Duplo clique direto: `abrir_squackts.bat`
-- Via PowerShell: `.\abrir_squackts.ps1`
-  - usa a pasta onde o script está como pasta do projeto
-  - valida pasta do projeto
-  - deteta `py`/`python`
-  - cria `.venv` se necessário
-  - instala dependências de `requirements.txt` quando mudam
-  - arranca `app.py`
+Checks:
+  python -m unittest discover -s tests -v
+  python -m ruff check .
+  python -m mypy
 
-Criar atalho no Ambiente de Trabalho (Windows)
-----------------------------------------------
-1. Abrir PowerShell na pasta do projeto.
-2. Executar:
-   - `.\criar_atalho_squackts.ps1`
-3. Será criado no Desktop:
-   - `Squackts POD Manager.lnk`
-   - O atalho aponta para `abrir_squackts.bat` (robusto a ExecutionPolicy).
-
-No arranque a app:
-- garante diretórios obrigatórios
-- cria/abre base SQLite
-- aplica schema e migrações automaticamente
-
-Quality gates (recomendado no dia a dia)
-----------------------------------------
-1. **Validação sintática / compilação de módulos**
-   - `python -m compileall .`
-2. **Testes de regressão (suite principal)**
-   - `python -m unittest discover -s tests -v`
-3. **Lint leve e rápido (ruff)**
-   - `python -m ruff check .`
-4. **Typing básico e pragmático (mypy)**
-   - `python -m mypy`
-
-Notas dos checks
-----------------
-- `unittest` é a suite oficial do projeto.
-- Configurações de `ruff` e `mypy` estão em `pyproject.toml`.
-- `mypy` cobre camadas de domínio e infraestrutura (`services`, `repositories`, `db.py`, `schema.py`, `service_container.py`, `utils.py`) com foco pragmático.
-
-Comandos recomendados (copiar/colar)
--------------------------------------
-- `python -m compileall .`
-- `python -m unittest discover -s tests -v`
-- `python -m ruff check .`
-- `python -m mypy`
+Guia completo de operação, migração, backups/restauro, desenvolvimento,
+distribuição Windows, CI e desempenho: README.md.
