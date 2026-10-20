@@ -74,7 +74,7 @@ class OrdersPage(QWidget):
         root.setContentsMargins(SPACING.lg, SPACING.lg, SPACING.lg, SPACING.lg)
         root.setSpacing(SPACING.md)
 
-        root.addWidget(PageHeader("Encomendas", "Execução operacional com stock e produção reais."))
+        root.addWidget(PageHeader("Encomendas", "Do primeiro pedido à entrega, tudo no mesmo lugar."))
 
         self.new_button = PrimaryButton("Nova encomenda")
         self.new_button.clicked.connect(self._open_create)

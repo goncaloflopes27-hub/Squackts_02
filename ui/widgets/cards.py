@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QPainter, QPaintEvent
+from PySide6.QtCore import QEasingCurve, Qt, QTimer, QVariantAnimation, Signal
+from PySide6.QtGui import QColor, QKeyEvent, QMouseEvent, QPainter, QPaintEvent
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -14,27 +14,79 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ui.animations import reduced_motion
 from ui.theme import COLORS, RADIUS, SPACING
 from ui.widgets.common import clear_layout
 from ui.widgets.controls import AppCard, ElevatedCard, IconButton, PanelHeader, PrimaryButton, StatPill
+from ui.widgets.flow_layout import FlowLayout
 
 
 class KPIWidget(AppCard):
+    clicked = Signal()
+
     def __init__(self, label: str, value: str, delta: str, tone: str = "info") -> None:
         super().__init__()
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setAccessibleName(f"{label}: {value}. Abrir lista correspondente.")
+        self.setMinimumHeight(160)
+        self.setMaximumHeight(180)
         layout: QVBoxLayout = self.layout()  # type: ignore[assignment]
         top = QLabel(label)
         top.setWordWrap(True)
         top.setStyleSheet(f"color:{COLORS.text_secondary}; font-size:12px;")
         layout.addWidget(top)
-        val = QLabel(value)
-        val.setWordWrap(True)
-        val.setStyleSheet("font-size: 30px; font-weight: 780; letter-spacing: 0.3px;")
-        layout.addWidget(val)
-        hint = StatPill(delta, tone)
+        self.value_label = QLabel(value)
+        self.value_label.setMinimumHeight(44)
+        self.value_label.setStyleSheet("font-size:28px; font-weight:600;")
+        layout.addWidget(self.value_label)
+        hint = QLabel(delta)
         hint.setWordWrap(True)
-        hint.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        hint.setStyleSheet(f"color:{COLORS.text_secondary}; font-size:12px;")
         layout.addWidget(hint)
+        layout.addStretch()
+        self._value = 0.0
+        self._target = value
+        self._counter = QVariantAnimation(self)
+        self._counter.setDuration(600)
+        self._counter.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._counter.valueChanged.connect(self._render_count)
+        self._counter.finished.connect(lambda: self.value_label.setText(self._target))
+        QTimer.singleShot(0, lambda: self.set_value(value))
+
+    def set_value(self, value: str) -> None:
+        self._counter.stop()
+        self._target = value
+        self.setAccessibleName(f"{self.findChildren(QLabel)[0].text()}: {value}. Abrir lista correspondente.")
+        try:
+            number = float(value.replace(" €", "").replace(" ", "").replace(",", "."))
+        except ValueError:
+            self.value_label.setText(value)
+            return
+        if reduced_motion(self):
+            self.value_label.setText(value)
+            self._value = number
+            return
+        self._counter.setStartValue(self._value)
+        self._counter.setEndValue(number)
+        self._counter.start()
+
+    def _render_count(self, number: float) -> None:
+        self._value = number
+        # Interpolation is presentation only; the exact service-formatted target is restored at the end.
+        text = f"{number:,.2f}".replace(",", " ").replace(".", ",") + " €" if "€" in self._target else str(round(number))
+        self.value_label.setText(text)
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
+            self.clicked.emit()
+        super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+            self.clicked.emit()
+        else:
+            super().keyPressEvent(event)
 
 
 class InlineMetric(QWidget):
@@ -205,12 +257,12 @@ class Toolbar(QWidget):
         self.setStyleSheet(
             f"QWidget#Toolbar {{background:{COLORS.surface}; border:1px solid {COLORS.border}; border-radius:{RADIUS.lg}px;}}"
         )
-        layout = QHBoxLayout(self)
+        layout = FlowLayout(self)
         layout.setContentsMargins(SPACING.md, SPACING.sm, SPACING.md, SPACING.sm)
         layout.setSpacing(SPACING.sm)
         for widget in widgets:
             layout.addWidget(widget)
-        layout.addStretch(1)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
 
 
 class RowActionBar(QWidget):
@@ -273,6 +325,6 @@ class PlaceholderThumbnail(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.fillRect(self.rect(), QColor(COLORS.surface_alt))
-        painter.setPen(Qt.GlobalColor.white)
+        painter.setPen(QColor(COLORS.text_primary))
         painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self._text)
         super().paintEvent(event)

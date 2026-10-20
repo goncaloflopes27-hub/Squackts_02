@@ -50,12 +50,12 @@ class ProductsPage(QWidget):
 
         add_button = PrimaryButton("Novo produto")
         add_button.clicked.connect(self._open_create)
-        root.addWidget(PageHeader("Catálogo", "Gestão comercial de produtos, margens e produção."))
+        root.addWidget(PageHeader("Catálogo", "As tuas peças, preços e disponibilidade."))
         self.search_input = SearchInput("Pesquisar produto, SKU ou coleção...")
         self.search_input.textChanged.connect(self.apply_search)
         self.type_combo = QComboBox()
         for label, value in [
-            ("Todos os modos de tratamento", "todas"),
+            ("Todos os tipos de produção", "todas"),
             ("Produzir a pedido", "print_on_demand"),
             ("Stock físico", "stock_fisico"),
             ("Misto", "misto"),
@@ -70,7 +70,7 @@ class ProductsPage(QWidget):
         self.stock_combo = QComboBox()
         self.stock_combo.addItems(["Todo o stock", "Stock baixo", "Disponível"])
         self.stock_combo.currentIndexChanged.connect(lambda _index: self.refresh())
-        self.export_button = PrimaryButton("Exportar CSV")
+        self.export_button = SecondaryButton("Exportar CSV")
         self.export_button.clicked.connect(self._export_csv)
         root.addWidget(
             Toolbar(self.search_input, self.type_combo, self.active_combo, self.stock_combo)
@@ -83,7 +83,7 @@ class ProductsPage(QWidget):
         table_card = QWidget()
         table_layout = QVBoxLayout(table_card)
         table_layout.setContentsMargins(0, 0, 0, 0)
-        table_layout.addWidget(PanelHeader("Produtos", "Dados reais da base de dados"))
+        table_layout.addWidget(PanelHeader("Produtos", "Preços e disponibilidade num só olhar"))
 
         self.table = DataTable(0, 7)
         self.table.setHorizontalHeaderLabels(["Produto", "SKU", "Produção", "Preço", "Custo", "Margem", "Disponível"])

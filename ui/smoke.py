@@ -53,7 +53,7 @@ class SmokeProbe(QObject):
             return
         self.page_key = page
         self.window.navigate(page)
-        QTimer.singleShot(400, self._verify_page)
+        QTimer.singleShot(750, self._verify_page)
 
     def _verify_page(self) -> None:
         current = self.window.page_refs[self.page_key]

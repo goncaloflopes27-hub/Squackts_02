@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
     QStyledItemDelegate,
     QStyleOptionViewItem,
     QTableWidget,
+    QTableWidgetItem,
     QWidget,
 )
 
@@ -48,6 +49,12 @@ class DataTable(QTableWidget):
             f"QTableWidget::item {{padding: 9px 12px; border-bottom:1px solid {COLORS.border};}}"
             f"QTableWidget::item:selected {{background:{COLORS.overlay_soft}; color:{COLORS.text_primary};}}"
         )
+
+    def setItem(self, row: int, column: int, item: QTableWidgetItem) -> None:
+        header = self.horizontalHeaderItem(column)
+        if header and header.text() in {"Preço", "Custo", "Margem", "Total", "Total item", "Itens", "Qtd", "Unidades", "Disponível"}:
+            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        super().setItem(row, column, item)
 
     def set_editable_columns(self, columns: set[int]) -> None:
         self.setItemDelegate(_ColumnEditor(set(columns), self))

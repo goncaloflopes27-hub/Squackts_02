@@ -57,13 +57,13 @@ class ClientsPage(QWidget):
 
         new_button = PrimaryButton("Novo cliente")
         new_button.clicked.connect(self._open_create)
-        root.addWidget(PageHeader("Clientes", "Dados pessoais e comerciais com contexto de relacionamento."))
+        root.addWidget(PageHeader("Clientes", "Pessoas, contactos e o histórico de cada encomenda."))
         self.search_input = SearchInput("Pesquisar cliente por nome, email ou telefone...")
         self.search_input.textChanged.connect(self.apply_search)
         self.active_combo = QComboBox()
         self.active_combo.addItems(["Ativos", "Arquivados", "Todos"])
         self.active_combo.currentIndexChanged.connect(lambda _index: self.refresh())
-        self.export_button = PrimaryButton("Exportar CSV")
+        self.export_button = SecondaryButton("Exportar CSV")
         self.export_button.clicked.connect(self._export_csv)
         root.addWidget(Toolbar(self.search_input, self.active_combo, self.export_button, new_button))
 

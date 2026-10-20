@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Signal
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QTableWidgetItem, QVBoxLayout, QWidget
 
 from services.dashboard_service import DashboardService
@@ -28,7 +29,8 @@ class DashboardPage(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(SPACING.lg, SPACING.lg, SPACING.lg, SPACING.lg)
         root.setSpacing(SPACING.md)
-        root.addWidget(PageHeader("Painel", "O que precisa da sua atenção hoje."))
+        root.addWidget(PageHeader("Hoje", "Tudo pronto para um dia bem organizado."))
+        self.kpis: list[KPIWidget] = []
         self.kpi_grid = QGridLayout()
         self.kpi_grid.setSpacing(SPACING.md)
         root.addLayout(self.kpi_grid)
@@ -56,7 +58,7 @@ class DashboardPage(QWidget):
 
     def refresh(self) -> None:
         summary = self.service.get_summary()
-        clear_layout(self.kpi_grid, start_index=0)
+
         metrics = [
             ("Valor confirmado", format_currency(summary.total_revenue), "exclui rascunhos e canceladas", "info"),
             (
@@ -73,8 +75,15 @@ class DashboardPage(QWidget):
                 "queued",
             ),
         ]
-        for column, (title, value, hint, tone) in enumerate(metrics):
-            self.kpi_grid.addWidget(KPIWidget(title, value, hint, tone), 0, column)
+        destinations = ["", "", "", "pronta_envio"]
+        for index, (title, value, hint, tone) in enumerate(metrics):
+            if index < len(self.kpis):
+                self.kpis[index].set_value(value)
+            else:
+                card = KPIWidget(title, value, hint, tone)
+                card.clicked.connect(lambda q=destinations[index]: self.navigate_requested.emit("orders", q))
+                self.kpis.append(card)
+        self._arrange_kpis()
         alerts_layout = self.alerts_card.layout()
         assert alerts_layout is not None
         clear_layout(alerts_layout)
@@ -122,3 +131,14 @@ class DashboardPage(QWidget):
         layout.addWidget(InfoRow("A reembolsar", format_currency(summary.refunds_pending)))
         layout.addWidget(InfoRow("Reembolsado", format_currency(summary.total_refunded)))
         layout.addWidget(InfoRow("Recebido líquido", format_currency(summary.total_received - summary.total_refunded)))
+
+    def _arrange_kpis(self) -> None:
+        columns = 2 if self.width() < 1000 else 4
+        for index, card in enumerate(self.kpis):
+            self.kpi_grid.addWidget(card, index // columns, index % columns)
+        for column in range(4):
+            self.kpi_grid.setColumnStretch(column, 1 if column < columns else 0)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._arrange_kpis()
