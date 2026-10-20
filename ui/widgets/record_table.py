@@ -203,7 +203,10 @@ class RecordTable(QTableView):
         if not block:
             self._proxy.invalidate()
         self.setUpdatesEnabled(not block)
-        return super().blockSignals(block)
+        previous = super().blockSignals(block)
+        if not block:
+            self._selection_feedback()
+        return previous
 
     def _selection_feedback(self) -> None:
         count = len(self.selectionModel().selectedRows())

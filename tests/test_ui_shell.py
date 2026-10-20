@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from PySide6.QtCore import QCoreApplication, QEvent, Qt, qInstallMessageHandler
+from PySide6.QtCore import QCoreApplication, QEvent, QItemSelectionModel, Qt, qInstallMessageHandler
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -219,6 +219,12 @@ class UiShellTests(unittest.TestCase):
         self.assertEqual(table.selectedItems()[0].row(), 0)
         table.copy_selection()
         self.assertIn("Maior", self.app.clipboard().text())
+        table.selectionModel().select(table.model().index(0, 0), QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
+        self.assertFalse(table.selection_bar.isHidden())
+        table.blockSignals(True)
+        table.setRowCount(0)
+        table.blockSignals(False)
+        self.assertTrue(table.selection_bar.isHidden())
         table.deleteLater()
 
     def test_new_order_draft_recovers_without_creating_a_commercial_order(self) -> None:
