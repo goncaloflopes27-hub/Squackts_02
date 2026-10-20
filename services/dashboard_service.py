@@ -25,6 +25,9 @@ class DashboardSummary:
     estimated_margin: Decimal = Decimal("0.00")
     low_stock_count: int = 0
     production_units: int = 0
+    total_received: Decimal = Decimal("0.00")
+    refunds_pending: Decimal = Decimal("0.00")
+    total_refunded: Decimal = Decimal("0.00")
 
 
 class DashboardService:
@@ -61,4 +64,7 @@ class DashboardService:
             estimated_margin=cents_to_money(self.repository.estimated_margin_cents()),
             low_stock_count=low_stock,
             production_units=self.repository.production_units(),
+            total_received=cents_to_money(totals["received_cents"]),
+            refunds_pending=cents_to_money(totals["refund_pending_cents"]),
+            total_refunded=cents_to_money(totals["refunded_cents"]),
         )

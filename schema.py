@@ -194,6 +194,15 @@ def _migration_6(conn: sqlite3.Connection) -> None:
         conn.execute(statement)
 
 
+def _migration_7(conn: sqlite3.Connection) -> None:
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(orders)")}
+    if "refund_status" not in columns:
+        conn.execute("ALTER TABLE orders ADD COLUMN refund_status TEXT NOT NULL DEFAULT 'none' CHECK (refund_status IN ('none', 'pending', 'refunded'))")
+    if "refund_recorded_at" not in columns:
+        conn.execute("ALTER TABLE orders ADD COLUMN refund_recorded_at TEXT NOT NULL DEFAULT ''")
+    conn.execute("UPDATE orders SET refund_status = 'pending' WHERE estado = 'cancelada' AND pago = 1 AND total_cents > 0 AND refund_status = 'none'")
+
+
 MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     1: _migration_1,
     2: _migration_2,
@@ -201,6 +210,7 @@ MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     4: _migration_4,
     5: _migration_5,
     6: _migration_6,
+    7: _migration_7,
 }
 
 

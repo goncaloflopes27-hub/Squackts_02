@@ -269,6 +269,13 @@ class OrdersPage(QWidget):
         if order_state == "rascunho":
             payment.setToolTip("Confirme a encomenda antes de registar o pagamento.")
         self.detail.add_content_widget(payment)
+        if order.get("refund_status", "none") != "none":
+            pending = order["refund_status"] == "pending"
+            self.detail.add_content_widget(InfoRow("Reembolso", "Pendente — devolver o total" if pending else "Confirmado pelo operador"))
+            if pending:
+                refund = SecondaryButton("Confirmar dinheiro devolvido…")
+                refund.clicked.connect(self._record_refund)
+                self.detail.add_content_widget(refund)
         labels = {
             "confirmada": "Confirmar encomenda",
             "em_producao": "Iniciar produção",
@@ -306,6 +313,23 @@ class OrdersPage(QWidget):
                 or [("Criada", str(order["created_at"]))],
             )
         )
+
+    def _record_refund(self) -> None:
+        if self.selected_order_id is None:
+            return
+        order = self.order_service.get_order(self.selected_order_id)
+        if order is None:
+            return
+        confirmation = ConfirmationDialog(
+            "Confirmar reembolso", f"Já devolveu {format_currency(order['total'])} ao cliente? Esta ação apenas regista a devolução; não transfere dinheiro.", self
+        )
+        if confirmation.exec():
+            try:
+                self.order_service.record_refund(self.selected_order_id)
+            except ValueError as exc:
+                show_toast(self, str(exc), "danger")
+                return
+            self.refresh(self.selected_order_id)
 
     def _open_create(self) -> None:
         dialog = OrderEditorDialog(

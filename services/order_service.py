@@ -26,7 +26,7 @@ from services.order_domain import (
     validate_tracking_for_state,
 )
 from services.order_queries import OrderPage, OrderQuery
-from utils import cents_to_money, money_to_cents, now_iso, to_json
+from utils import cents_to_money, checked_cents, item_quantity, money_to_cents, now_iso, to_json
 
 PROD_PRINT_ON_DEMAND = "print_on_demand"
 PROD_STOCK_FISICO = "stock_fisico"
@@ -230,6 +230,19 @@ class OrderService:
     def cancel_order(self, order_id: int) -> None:
         self.change_state(order_id, "cancelada")
 
+    def record_refund(self, order_id: int) -> None:
+        """Record the operator's confirmation of an external full refund."""
+        with transaction(self.conn):
+            current = self._require_order(order_id)
+            if current["estado"] != "cancelada" or current["refund_status"] == "none" or not int(current["pago"]) or int(current["total_cents"]) <= 0:
+                raise ValueError("A encomenda não tem um reembolso pendente")
+            if current["refund_status"] == "refunded":
+                return
+            now = now_iso()
+            self.orders.update_refund(order_id, "refunded", now, now)
+            self._audit(order_id, "refund", "Reembolso integral confirmado pelo operador", {"amount_cents": int(current["total_cents"])})
+        self._publish()
+
     def set_payment(self, order_id: int, paid: bool, method: str | None = None) -> None:
         with transaction(self.conn):
             current = self._require_order(order_id)
@@ -346,6 +359,8 @@ class OrderService:
             self._inventory().consume_order(order_id)
         elif target == "cancelada":
             self._inventory().release_order(order_id)
+            if int(current["pago"]) and int(current["total_cents"]) > 0:
+                self.orders.update_refund(order_id, "pending", "", now_iso())
         self.orders.update_state(order_id, target, now_iso())
         self._audit(order_id, "state", f"Estado -> {target}", {"previous_state": state, "state": target})
 
@@ -435,15 +450,15 @@ class OrderService:
             self.orders.delete_item(int(removed["id"]))
 
     def _update_totals(self, order_id: int, data: dict[str, Any]) -> None:
-        subtotal = sum(
+        subtotal = checked_cents(sum(
             int(row["preco_unit_cents"]) * int(row["quantidade"]) for row in self.orders.list_items(order_id)
-        )
+        ))
         self.orders.update_order(
             order_id,
             {
                 **data,
                 "subtotal_cents": subtotal,
-                "total_cents": subtotal + int(data["portes_cents"]),
+                "total_cents": checked_cents(subtotal + int(data["portes_cents"])),
                 "updated_at": now_iso(),
             },
         )
@@ -500,7 +515,7 @@ class OrderService:
         for item in raw_items:
             if not isinstance(item, dict):
                 raise ValueError("Item inválido")
-            product_id, quantity = int(item.get("product_id", 0)), int(item.get("quantidade", 0))
+            product_id, quantity = int(item.get("product_id", 0)), item_quantity(item.get("quantidade", 0))
             if product_id <= 0 or quantity <= 0:
                 raise ValueError("Quantidade ou produto inválido")
             normalized = {
@@ -517,7 +532,7 @@ class OrderService:
                 normalized["variant_id"] = int(variant["id"])
             key = self._item_key(normalized)
             if key in merged:
-                merged[key]["quantidade"] += quantity
+                merged[key]["quantidade"] = item_quantity(merged[key]["quantidade"] + quantity)
             else:
                 merged[key] = normalized
         return list(merged.values())

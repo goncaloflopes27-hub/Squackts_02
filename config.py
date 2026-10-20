@@ -1,15 +1,32 @@
 from __future__ import annotations
 
+import json
 import os
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 APP_NAME: str = "SquackTS"
-APP_VERSION: str = "0.3.0"
+APP_VERSION: str = "0.3.1"
 WINDOW_MIN_WIDTH: int = 1280
 WINDOW_MIN_HEIGHT: int = 800
 BASE_DIR: Path = Path(__file__).resolve().parent
+
+
+def display_version() -> str:
+    try:
+        document = json.loads((BASE_DIR / "build-info.json").read_text(encoding="utf-8"))
+        if isinstance(document, dict) and document.get("base_version") == APP_VERSION:
+            release = str(document.get("release_version", ""))
+            if re.fullmatch(re.escape(APP_VERSION) + r"(?:-rc\.\d+)?", release):
+                return release
+    except (OSError, ValueError):
+        pass
+    return APP_VERSION
+
+
+APP_DISPLAY_VERSION: str = display_version()
 
 
 def application_data_home() -> Path:
@@ -34,7 +51,7 @@ LOGS_DIR: Path = DATA_HOME / "logs"
 DB_PATH: Path = DATA_DIR / "pod_manager.db"
 LOG_FILE_PATH: Path = LOGS_DIR / "app.log"
 DEFAULT_BUSY_TIMEOUT_MS: int = 5_000
-SCHEMA_USER_VERSION: int = 6
+SCHEMA_USER_VERSION: int = 7
 
 
 @dataclass(frozen=True)

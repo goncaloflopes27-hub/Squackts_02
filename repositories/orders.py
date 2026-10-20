@@ -283,6 +283,12 @@ class OrderRepository:
     def update_notes(self, order_id: int, notes: str, updated_at: str) -> None:
         self.conn.execute("UPDATE orders SET notas = ?, updated_at = ? WHERE id = ?", (notes, updated_at, order_id))
 
+    def update_refund(self, order_id: int, status: str, recorded_at: str, updated_at: str) -> None:
+        self.conn.execute(
+            "UPDATE orders SET refund_status = ?, refund_recorded_at = ?, updated_at = ? WHERE id = ?",
+            (status, recorded_at, updated_at, order_id),
+        )
+
     def get_history(self, order_id: int) -> list[Row]:
         return self.conn.execute(
             """

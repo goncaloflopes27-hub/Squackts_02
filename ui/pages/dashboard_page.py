@@ -60,9 +60,9 @@ class DashboardPage(QWidget):
         metrics = [
             ("Valor confirmado", format_currency(summary.total_revenue), "exclui rascunhos e canceladas", "info"),
             (
-                "Marcado como pago",
-                format_currency(getattr(summary, "total_paid", 0)),
-                "registo manual de pagamento",
+                "Recebido registado",
+                format_currency(summary.total_received),
+                "inclui canceladas; ver reembolsos",
                 "ok",
             ),
             ("Por receber", format_currency(summary.total_unpaid), "encomendas confirmadas por pagar", "warning"),
@@ -119,3 +119,6 @@ class DashboardPage(QWidget):
         layout.addWidget(InfoRow("Unidades por produzir", str(getattr(summary, "production_units", 0))))
         layout.addWidget(InfoRow("Prazos ultrapassados", str(getattr(summary, "overdue_orders", 0))))
         layout.addWidget(InfoRow("Margem estimada", format_currency(getattr(summary, "estimated_margin", 0))))
+        layout.addWidget(InfoRow("A reembolsar", format_currency(summary.refunds_pending)))
+        layout.addWidget(InfoRow("Reembolsado", format_currency(summary.total_refunded)))
+        layout.addWidget(InfoRow("Recebido líquido", format_currency(summary.total_received - summary.total_refunded)))
