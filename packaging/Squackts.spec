@@ -12,6 +12,7 @@ analysis = Analysis(
     pathex=[str(project_root)],
     binaries=[],
     datas=[
+        (str(assets / "build-info.json"), "."),
         (str(project_root / "packaging" / "assets" / "squackts.svg"), "assets"),
         (str(project_root / "ui" / "icons"), "ui/icons"),
     ],
@@ -50,8 +51,10 @@ collection = COLLECT(
 from shutil import copy2
 
 distribution = Path(DISTPATH) / "SquackTS"
+copy2(assets / "build-info.json", distribution / "build-info.json")
 for document in ("README.md", "README.txt", "AGENTS.md", "PLANO_MELHORIAS.md", "RELATORIO_IMPLEMENTACAO.md", "criar_atalho_squackts.ps1"):
     copy2(project_root / document, distribution / document)
 validation_dir = distribution / "docs"
 validation_dir.mkdir(exist_ok=True)
 copy2(project_root / "docs" / "VALIDACAO.md", validation_dir / "VALIDACAO.md")
+copy2(project_root / "docs" / "REVISAO_EXTERNA.md", validation_dir / "REVISAO_EXTERNA.md")

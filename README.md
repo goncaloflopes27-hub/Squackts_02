@@ -7,6 +7,8 @@ PySide6 e os dados ficam em SQLite, sem depender de um servidor.
 O [relatório de implementação](RELATORIO_IMPLEMENTACAO.md) resume os resultados e
 as prioridades. A [evidência de validação](docs/VALIDACAO.md) identifica os testes
 alterados, as medições e o que ainda não foi ensaiado.
+As [respostas às revisões externas](docs/REVISAO_EXTERNA.md) registam as correções
+da versão 0.3.1 e os limites que continuam pendentes.
 
 ## Limites comerciais atuais
 
@@ -22,7 +24,7 @@ versão por registo para detetar todas as edições obsoletas nem suporte multiu
 
 ## Utilização no Windows
 
-Use o instalador **SquackTS-Setup-0.3.0-x64.exe** em Windows 10/11 de 64 bits.
+Use o instalador **SquackTS-Setup-<versão>-x64.exe** em Windows 10/11 de 64 bits.
 Instala a aplicação e as dependências na conta atual, cria automaticamente atalhos
 no Ambiente de Trabalho e no menu Iniciar e permite abrir o SquackTS no fim.
 Não é necessário instalar Python, extrair pastas ou executar comandos.
@@ -63,6 +65,12 @@ O pagamento é separado do estado operacional. Os valores ficam em cêntimos e o
 preços/custos contratados são preservados ao editar notas ou tracking. Atualizar
 preços a partir do catálogo é uma revisão comercial explícita.
 
+Cancelar uma encomenda paga gera um **reembolso pendente**, conforme a política de
+devolver sempre o valor. Depois de devolver o dinheiro fora da aplicação, use
+**Confirmar dinheiro devolvido** no detalhe. A aplicação regista a confirmação e o
+histórico; não executa transferências. O Painel distingue recebido, reembolsos
+pendentes, reembolsado e recebido líquido, incluindo cancelamentos.
+
 Na confirmação, o stock físico é reservado; na expedição é consumido; o cancelamento
 liberta a reserva. Em pedidos mistos, o disponível é reservado e o restante é
 produzido. Produtos ou clientes arquivados mantêm o histórico e deixam de ser
@@ -102,6 +110,19 @@ As cópias mantidas no mesmo disco protegem contra erros de edição, mas a recu
 de uma avaria do computador exige uma cópia guardada noutro local. A aplicação foi
 preparada para uso local por uma operação; partilhar diretamente o SQLite numa
 pasta de rede não constitui uma solução de colaboração entre máquinas.
+
+### Passar de uma versão antiga para a instalada
+
+Se os dados estavam noutra pasta/checkout, abra a versão antiga e crie um backup
+completo ZIP em Sistema. Na instalada, use Sistema → Restaurar, confira o conteúdo
+e confirme. Os dados atuais recebem uma cópia de recuperação. Reinicie depois.
+Um backup apenas SQLite não inclui imagens. A aplicação não procura nem substitui
+automaticamente bases em pastas arbitrárias do computador.
+
+Para uma instalação que já usa AppData, execute o instalador novo com a aplicação
+fechada. A base é migrada com cópia prévia. O ensaio automático compara dados
+sintéticos entre 0.3.0 e a nova versão; não valida dados reais do utilizador.
+Um restauro interrompido é detetado e recuperado no arranque.
 
 ## Desenvolvimento
 

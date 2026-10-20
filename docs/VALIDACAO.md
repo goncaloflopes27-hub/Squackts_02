@@ -1,5 +1,7 @@
 # Evidência de validação do SquackTS
 
+Este documento regista a primeira entrega (114 testes). A revisão 0.3.1, com 137 testes e as alterações posteriores, está em [REVISAO_EXTERNA.md](REVISAO_EXTERNA.md).
+
 Este documento acompanha o [relatório curto](../RELATORIO_IMPLEMENTACAO.md). Separa o que foi executado, o que o código contém e o que ainda precisa de ensaio. A referência inicial é `34d588a21561c8793616643806599c869cecf820`; a implementação está nos commits seguintes da branch de trabalho.
 
 ## Resultados executados

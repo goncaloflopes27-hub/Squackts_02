@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import ast
 import io
+import json
+import os
+import subprocess
 from pathlib import Path
 
 from PIL import Image
@@ -41,9 +44,19 @@ def generate_assets() -> Path:
     buffer.close()
     with Image.open(io.BytesIO(bytes(image_data))) as source:
         source.save(target / "squackts.ico", sizes=[(16, 16), (32, 32), (48, 48), (128, 128), (256, 256)])
-    version = app_version()
-    numbers = tuple(int(part) for part in version.split("."))
-    version_tuple = (numbers + (0, 0, 0, 0))[:4]
+    base_version = app_version()
+    build_number = os.environ.get("SQUACKTS_BUILD_NUMBER", "")
+    if build_number and (not build_number.isdecimal() or not 0 <= int(build_number) <= 65535):
+        raise ValueError("Número de build inválido")
+    version = f"{base_version}-rc.{build_number}" if build_number else base_version
+    numbers = tuple(int(part) for part in base_version.split("."))
+    version_tuple = (*numbers, int(build_number or 0))
+    commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    expected_commit = os.environ.get("SQUACKTS_BUILD_COMMIT")
+    if expected_commit and commit != expected_commit:
+        raise RuntimeError("O checkout não corresponde ao commit declarado para o build")
+    metadata = {"base_version": base_version, "release_version": version, "file_version": ".".join(map(str, version_tuple)), "commit": commit}
+    (target / "build-info.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     (target / "version.txt").write_text(
         "VSVersionInfo(\n"
         f"  ffi=FixedFileInfo(filevers={version_tuple!r}, prodvers={version_tuple!r}, "

@@ -1,5 +1,7 @@
 # SquackTS — resultado da estabilização
 
+**Atualização 0.3.1:** a revisão externa levou à correção dos formulários bloqueados, recuperação de restauro interrompido, reembolsos, limites e adaptação ao ecrã. A suite local tem agora 137 testes e mypy cobre 68 ficheiros. O novo pipeline exige Windows nativo, atualização desde 0.3.0 e proveniência do instalador. A [verificação das duas revisões](docs/REVISAO_EXTERNA.md) distingue resultados executados dos ensaios do CI/equipamento. O texto abaixo regista a primeira entrega e as suas medições históricas.
+
 O SquackTS mantém o propósito de gerir localmente catálogo, clientes, encomendas, produção POD e expedição. O núcleo foi melhorado e testado em Linux; a adequação comercial e a entrega Windows continuam incompletas.
 
 **Código preservado:** commits locais de dependências (`9f58b11`), núcleo/dados (`c981b60`), interface (`47fcfcd`) e distribuição/CI (`d2b1d0b`), seguidos pela documentação e atualização do estado cloud. Consultar `git log -6 --oneline`. Não foi feito push; este histórico local não substitui uma cópia externa.

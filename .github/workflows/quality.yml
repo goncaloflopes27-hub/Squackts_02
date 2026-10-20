@@ -4,7 +4,13 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
+    inputs:
+      publish_installer:
+        description: Publish the verified installer preview
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -23,6 +29,8 @@ jobs:
       SQUACKTS_DATA_HOME: ${{ github.workspace }}/.local/ci
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
@@ -45,9 +53,13 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 25
     env:
-      QT_QPA_PLATFORM: offscreen
+      QT_QPA_PLATFORM: windows
+      SQUACKTS_BUILD_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+      SQUACKTS_BUILD_NUMBER: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -57,14 +69,10 @@ jobs:
             constraints.txt
       - run: python -m pip install --disable-pip-version-check -r requirements-build.txt
       - run: python -m PyInstaller --noconfirm --clean packaging/Squackts.spec
-      - run: python -m scripts.smoke_bundle
+      - run: python -m scripts.smoke_bundle --platform windows --screenshots dist/installer/screenshots/bundle
       - name: Ensure Inno Setup compiler
         shell: pwsh
-        run: |
-          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
-            choco install innosetup --version=6.4.3 --yes --no-progress --limit-output
-            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed.' }
-          }
+        run: ./scripts/install_compiler.ps1
       - name: Build Windows installer
         shell: pwsh
         run: ./scripts/build_installer.ps1 -SkipBuild
@@ -72,13 +80,25 @@ jobs:
         shell: pwsh
         run: |
           $installer = (Get-ChildItem dist/installer/SquackTS-Setup-*-x64.exe).FullName
-          python -m scripts.smoke_installer $installer
+          $baseline = Get-Content packaging/upgrade-baseline.json -Raw | ConvertFrom-Json
+          $previous = Join-Path $env:RUNNER_TEMP 'SquackTS-previous.exe'
+          Invoke-WebRequest -Uri $baseline.url -OutFile $previous
+          if ((Get-FileHash $previous -Algorithm SHA256).Hash.ToLowerInvariant() -ne $baseline.sha256) { throw 'Baseline installer checksum mismatch.' }
+          python -m scripts.smoke_installer $installer --previous-installer $previous
           if ($LASTEXITCODE -ne 0) { throw 'Installer verification failed.' }
       - uses: actions/upload-artifact@v4
         with:
           name: SquackTS-Windows-Installer
-          path: dist/installer/SquackTS-Setup-*-x64.exe
+          path: |
+            dist/installer/SquackTS-Setup-*-x64.exe
+            dist/installer/build-info.json
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SquackTS-Windows-native-screenshots
+          path: dist/installer/screenshots/
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
           name: SquackTS-Windows-x64
@@ -87,17 +107,18 @@ jobs:
 
   installer-preview:
     needs: windows-bundle
-    if: github.event_name == 'pull_request' && github.head_ref == 'codex/windows-installer' && github.event.pull_request.head.repo.full_name == github.repository
+    if: (github.event_name == 'workflow_dispatch' && inputs.publish_installer) || (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'publish-installer' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: windows-latest
     timeout-minutes: 10
     permissions:
       contents: write
     env:
       GH_TOKEN: ${{ github.token }}
-      RELEASE_COMMIT: ${{ github.event.pull_request.head.sha }}
-      RELEASE_NUMBER: ${{ github.run_number }}
+      RELEASE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/download-artifact@v4
         with:
           name: SquackTS-Windows-Installer
@@ -106,10 +127,26 @@ jobs:
         shell: pwsh
         run: |
           $installer = (Get-ChildItem release-assets/SquackTS-Setup-*-x64.exe).FullName
+          $metadata = Get-Content release-assets/build-info.json -Raw | ConvertFrom-Json
+          if ($metadata.commit -ne $env:RELEASE_COMMIT) { throw 'Installer source commit mismatch.' }
           $filename = Split-Path -Leaf $installer
           $checksum = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
+          if ($checksum -ne $metadata.installer_sha256) { throw 'Installer checksum mismatch.' }
           Set-Content -LiteralPath "$installer.sha256" -Value "$checksum  $filename" -Encoding ascii
           $version = $filename -replace '^SquackTS-Setup-', '' -replace '-x64.exe$', ''
-          $tag = "v$version-rc.$env:RELEASE_NUMBER"
-          gh release create $tag $installer "$installer.sha256" --repo $env:GITHUB_REPOSITORY --target $env:RELEASE_COMMIT --prerelease --latest=false --title "SquackTS $version - Instalador Windows para teste" --notes-file packaging/RELEASE_WINDOWS.md
+          if ($version -ne $metadata.release_version) { throw 'Installer version mismatch.' }
+          $tag = "v$version"
+          $source = "release-assets/SquackTS-fontes-$version.zip"
+          git archive --format=zip --prefix=SquackTS/ "--output=$source" $env:RELEASE_COMMIT
+          if ($LASTEXITCODE -ne 0) { throw 'Source archive failed.' }
+          $textSource = "release-assets/SquackTS-codigo-para-IA-$version.txt"
+          $text = [System.Text.StringBuilder]::new()
+          [void]$text.AppendLine("SquackTS $version; commit $env:RELEASE_COMMIT")
+          $files = git ls-files -- '*.py' '*.ps1' '*.iss' '*.yml' '*.md' '*.toml' 'requirements*.txt' 'constraints.txt' 'packaging/*.json'
+          foreach ($file in $files) {
+            [void]$text.AppendLine("`n===== $file =====")
+            [void]$text.AppendLine((Get-Content -LiteralPath $file -Raw -Encoding utf8))
+          }
+          Set-Content -LiteralPath $textSource -Value $text.ToString() -Encoding utf8
+          gh release create $tag $installer "$installer.sha256" $source $textSource --repo $env:GITHUB_REPOSITORY --target $env:RELEASE_COMMIT --prerelease --latest=false --title "SquackTS $version - Instalador Windows para teste" --notes-file packaging/RELEASE_WINDOWS.md
           if ($LASTEXITCODE -ne 0) { throw 'Installer release publication failed.' }

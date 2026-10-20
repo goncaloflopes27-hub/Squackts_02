@@ -8,6 +8,7 @@
 AppId={{873E567A-FA6B-43AA-A779-1771D17BFBF4}
 AppName=SquackTS
 AppVersion={#AppVersion}
+VersionInfoVersion={#FileVersion}
 AppPublisher=Squack TS
 DefaultDirName={localappdata}\Programs\SquackTS
 DefaultGroupName=SquackTS

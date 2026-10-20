@@ -56,7 +56,16 @@ def fingerprint(home: Path) -> tuple[int, int, str, str]:
     return int(count), int(total), str(value), digest
 
 
-def smoke_installer(installer: Path) -> None:
+def seed_marker(home: Path) -> None:
+    with closing(sqlite3.connect(home / "data" / "pod_manager.db")) as connection, connection:
+        connection.execute("CREATE TABLE installer_smoke (value TEXT NOT NULL)")
+        connection.execute("INSERT INTO installer_smoke VALUES ('preserved')")
+    image = home / "images" / "installer-smoke.png"
+    image.parent.mkdir(exist_ok=True)
+    Image.new("RGBA", (2, 2), (30, 90, 180, 128)).save(image)
+
+
+def smoke_installer(installer: Path, previous_installer: Path | None = None) -> None:
     if sys.platform != "win32":
         raise RuntimeError("O instalador deve ser testado num runner Windows descartavel")
     installer = installer.resolve(strict=True)
@@ -64,41 +73,61 @@ def smoke_installer(installer: Path) -> None:
         raise RuntimeError("O perfil ja tem atalhos SquackTS; use um runner descartavel")
     with TemporaryDirectory(prefix="SquackTS installer test ") as directory:
         root = Path(directory)
-        destination, home = root / "Installed app", root / "User data"
+        destination = root / "Aplicação instalada — João"
+        local = root / "Perfil Gonçalo" / "AppData" / "Local"
+        home = local / "Squackts"
         executable = destination / "SquackTS.exe"
         uninstaller = destination / "unins000.exe"
+        screenshots = Path("dist/installer/screenshots").resolve()
+        environment = os.environ.copy()
+        environment.pop("SQUACKTS_DATA_HOME", None)
+        environment.update(QT_QPA_PLATFORM="windows", LOCALAPPDATA=str(local))
         installed = False
+        before = None
         try:
+            if previous_installer is not None:
+                install(previous_installer.resolve(strict=True), destination, root / "previous.log")
+                installed = True
+                # The baseline predates --expect-platform and --smoke-default-profile.
+                subprocess.run(
+                    [str(executable), "--demo", "--smoke-test", "--data-dir", str(home)],
+                    cwd=root, env=environment, check=True, timeout=60,
+                )
+                seed_marker(home)
+                before = fingerprint(home)
+                with closing(sqlite3.connect(home / "data" / "pod_manager.db")) as connection:
+                    if connection.execute("PRAGMA user_version").fetchone()[0] != 6:
+                        raise RuntimeError("O instalador anterior nao criou o schema 6 esperado")
             install(installer, destination, root / "install.log")
             installed = True
             for item in shortcuts().values():
                 if Path(item["target"]).resolve() != executable.resolve():
                     raise RuntimeError(f"Atalho incorreto: {item['path']}")
-            smoke_bundle(executable)
-            environment = os.environ.copy()
-            environment["QT_QPA_PLATFORM"] = "offscreen"
-            subprocess.run(
-                [str(executable), "--demo", "--smoke-test", "--data-dir", str(home)],
-                cwd=root, env=environment, check=True, timeout=60,
-            )
-            with closing(sqlite3.connect(home / "data" / "pod_manager.db")) as connection, connection:
-                connection.execute("CREATE TABLE installer_smoke (value TEXT NOT NULL)")
-                connection.execute("INSERT INTO installer_smoke VALUES ('preserved')")
-            image = home / "images" / "installer-smoke.png"
-            image.parent.mkdir(exist_ok=True)
-            Image.new("RGBA", (2, 2), (30, 90, 180, 128)).save(image)
-            before = fingerprint(home)
+            smoke_bundle(executable, screenshots=screenshots / "installed")
+            if before is None:
+                subprocess.run(
+                    [str(executable), "--demo", "--smoke-test", "--data-dir", str(home), "--expect-platform", "windows"],
+                    cwd=root, env=environment, check=True, timeout=60,
+                )
+                seed_marker(home)
+                before = fingerprint(home)
             if before[0] != 8:
                 raise RuntimeError("Os dados de demonstracao nao foram criados")
-            install(installer, destination, root / "upgrade.log")
             if fingerprint(home) != before:
-                raise RuntimeError("A atualizacao alterou os dados do utilizador")
+                raise RuntimeError("A instalacao alterou os dados do utilizador")
             subprocess.run(
-                [str(executable), "--smoke-test", "--data-dir", str(home)],
+                [str(executable), "--smoke-test", "--smoke-default-profile", "--expect-platform", "windows", "--screenshots", str(screenshots / "upgraded-default-profile")],
                 cwd=root, env=environment, check=True, timeout=60,
             )
             if fingerprint(home) != before:
-                raise RuntimeError("O arranque depois da atualizacao alterou os dados")
+                raise RuntimeError("A migracao/arranque no perfil por omissao alterou os dados")
+            with closing(sqlite3.connect(home / "data" / "pod_manager.db")) as connection:
+                from config import SCHEMA_USER_VERSION
+                if connection.execute("PRAGMA user_version").fetchone()[0] != SCHEMA_USER_VERSION:
+                    raise RuntimeError("A migracao da base instalada nao foi aplicada")
+            install(installer, destination, root / "reinstall.log")
+            if fingerprint(home) != before:
+                raise RuntimeError("A reinstalacao alterou os dados")
             subprocess.run(
                 [str(uninstaller), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"],
                 check=True, timeout=120,
@@ -108,7 +137,7 @@ def smoke_installer(installer: Path) -> None:
                 raise RuntimeError("A desinstalacao nao removeu a app/atalhos")
             if fingerprint(home) != before:
                 raise RuntimeError("A desinstalacao removeu dados do utilizador")
-            print("Instalador: instalacao, dois atalhos, arranque, reinstalacao e desinstalacao verificados; dados preservados.")
+            print("Instalador: Qt windows, atalhos, perfil Unicode por omissao, migracao, reinstalacao e desinstalacao verificados; dados preservados.")
         finally:
             if installed and uninstaller.is_file():
                 subprocess.run(
@@ -120,8 +149,9 @@ def smoke_installer(installer: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("installer", type=Path)
+    parser.add_argument("--previous-installer", type=Path, help="Instalador 0.3.0 para ensaiar a atualizacao real")
     args = parser.parse_args()
-    smoke_installer(args.installer)
+    smoke_installer(args.installer, args.previous_installer)
     return 0
 
 
