@@ -93,13 +93,13 @@ class _BaseButton(QPushButton):
             QPushButton {{
                 background: {bg};
                 border: 1px solid {border};
-                border-radius: {RADIUS.md}px;
+                border-radius: {RADIUS.sm}px;
                 color: {fg};
-                font-weight: 650;
+                font-weight: 600;
                 padding: 9px 14px;
             }}
             QPushButton:hover {{ background: {hover}; border: 1px solid {COLORS.border_strong}; }}
-            QPushButton:focus {{ border: 1px solid {COLORS.primary}; }}
+            QPushButton:focus {{ border: 2px solid {COLORS.primary}; }}
             QPushButton:disabled {{ background:{COLORS.surface_alt}; color:{COLORS.text_muted}; border:1px solid {COLORS.border}; }}
             QPushButton:pressed {{ background: {hover}; }}
             """
@@ -108,7 +108,7 @@ class _BaseButton(QPushButton):
 
 class PrimaryButton(_BaseButton):
     def __init__(self, text: str) -> None:
-        super().__init__(text, COLORS.primary, COLORS.primary_hover, COLORS.primary)
+        super().__init__(text, COLORS.primary, COLORS.primary_hover, COLORS.primary, COLORS.on_primary)
 
 
 class SecondaryButton(_BaseButton):
@@ -123,7 +123,7 @@ class GhostButton(_BaseButton):
 
 class DangerButton(_BaseButton):
     def __init__(self, text: str) -> None:
-        super().__init__(text, "#7F1D1D", "#991B1B", COLORS.danger)
+        super().__init__("⚠ " + text, translucent(COLORS.danger, 30), translucent(COLORS.danger, 55), COLORS.danger, COLORS.danger)
 
 
 class IconButton(QToolButton):
@@ -159,13 +159,13 @@ class SidebarButton(QPushButton):
                 border-radius:{RADIUS.md}px;
                 padding:11px 14px;
                 color:{COLORS.text_secondary};
-                font-weight:620;
+                font-weight:500;
             }}
             QPushButton:hover {{background:{COLORS.surface_alt}; color:{COLORS.text_primary}; border:1px solid {COLORS.border};}}
             QPushButton:checked {{
                 background:{COLORS.surface_elevated};
                 border:1px solid {COLORS.border_strong};
-                border-left:3px solid {COLORS.primary};
+                border-left:3px solid {COLORS.brand_red};
                 color:{COLORS.text_primary};
                 padding-left:12px;
             }}

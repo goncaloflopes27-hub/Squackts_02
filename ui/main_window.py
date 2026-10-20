@@ -23,7 +23,7 @@ from ui.components import SearchInput, show_toast
 from ui.pages import ClientsPage, DashboardPage, OrdersPage, ProductionPage, ProductsPage, SystemPage
 from ui.preferences import LocalPreferences, PreferencesDialog
 from ui.sidebar import PAGES, Sidebar
-from ui.theme import app_stylesheet
+from ui.theme import app_stylesheet, initialize_theme
 from ui.topbar import TopBar
 
 
@@ -34,6 +34,9 @@ class _EventBridge(QObject):
 class MainWindow(QMainWindow):
     def __init__(self, container: ServiceContainer, *, available_geometry: QRect | None = None) -> None:
         super().__init__()
+        application = QApplication.instance()
+        if isinstance(application, QApplication):
+            initialize_theme(application)
         self.container = container
         self.setWindowTitle(APP_NAME)
         self.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)

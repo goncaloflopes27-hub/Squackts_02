@@ -15,6 +15,7 @@ analysis = Analysis(
         (str(assets / "build-info.json"), "."),
         (str(project_root / "packaging" / "assets" / "squackts.svg"), "assets"),
         (str(project_root / "ui" / "icons"), "ui/icons"),
+        (str(project_root / "ui" / "assets"), "ui/assets"),
     ],
     hiddenimports=["PySide6.QtSvg"],
     hookspath=[],

@@ -44,7 +44,7 @@ class ConfirmationDialog(QDialog):
 class ErrorText(QLabel):
     def __init__(self) -> None:
         super().__init__("")
-        self.setStyleSheet(f"color:{COLORS.danger}; font-size:11px;")
+        self.setStyleSheet(f"color:{COLORS.danger}; font-size:12px;")
         self.setWordWrap(True)
         self.setTextFormat(Qt.TextFormat.PlainText)
         self.setAccessibleName("Mensagem de validação")
