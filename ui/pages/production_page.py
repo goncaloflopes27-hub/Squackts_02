@@ -22,6 +22,7 @@ from ui.components import (
     Toolbar,
     show_toast,
 )
+from ui.formatting import display_date
 from ui.theme import SPACING
 
 
@@ -160,7 +161,7 @@ class ProductionPage(QWidget):
         self.detail.add_content_widget(PanelHeader(str(order["numero"]), str(order["client_nome"])))
         self.detail.add_content_widget(InfoRow("Âmbito das ações", "Toda a encomenda selecionada"))
         self.detail.add_content_widget(InfoRow("Estado", str(order["estado"]).replace("_", " ").capitalize()))
-        self.detail.add_content_widget(InfoRow("Data prevista", str(order.get("data_prevista", "")) or "Sem prazo"))
+        self.detail.add_content_widget(InfoRow("Data prevista", display_date(order.get("data_prevista"))))
         self.detail.add_content_widget(
             ActivityList(
                 "Itens",

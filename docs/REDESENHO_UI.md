@@ -16,7 +16,7 @@ A interface passa a usar fundos neutros, ações laranja, detalhes vermelhos e I
 
 ## Evidência
 
-140 testes locais aprovados, Ruff aprovado e mypy sem erros em 76 ficheiros. Três regressões novas cobrem pesquisa/carregamento tardio, ordenação/seleção e recuperação do rascunho sem criar encomendas. Os testes de shell foram adaptados à paleta de comandos e às três opções de movimento; as regressões comerciais anteriores mantêm-se.
+140 testes locais aprovados, Ruff aprovado e mypy sem erros em 77 ficheiros. Três regressões novas cobrem pesquisa/carregamento tardio, ordenação/seleção e recuperação do rascunho sem criar encomendas. Os testes de shell foram adaptados à paleta de comandos e às três opções de movimento; as regressões comerciais anteriores mantêm-se.
 
 Capturas das seis páginas em `docs/screenshots/` (1440×900) e `docs/screenshots/1100x650/`. Ensaio adicional offscreen com escala Qt de 150%. `python -m scripts.capture_ui` recria capturas com dados fictícios num diretório temporário. A captura mostra a viewport inicial; tabelas e painéis continuam a permitir deslocação.
 

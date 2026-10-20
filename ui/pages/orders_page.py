@@ -43,6 +43,7 @@ from ui.components import (
     show_toast,
 )
 from ui.dialogs import OrderEditorDialog
+from ui.formatting import display_action, display_date
 from ui.theme import SPACING
 from utils import format_currency
 
@@ -224,7 +225,7 @@ class OrdersPage(QWidget):
         self.detail.add_content_widget(PanelHeader(str(order["numero"]), str(order["client_nome"])))
         self.detail.add_content_widget(InfoRow("Estado", str(order["estado"]).replace("_", " ").capitalize()))
         self.detail.add_content_widget(InfoRow("Pagamento", "Pago" if int(order["pago"]) else "Pendente"))
-        self.detail.add_content_widget(InfoRow("Data prevista", str(order["data_prevista"]) or "Sem prazo"))
+        self.detail.add_content_widget(InfoRow("Data prevista", display_date(order["data_prevista"])))
         self.detail.add_content_widget(InfoRow("Notas", str(order["notas"]) or "—"))
         self.detail.add_content_widget(InfoRow("Tracking", str(order["tracking"] or "-")))
         self.detail.add_content_widget(InfoRow("Regra tracking", "Disponível desde pronta_envio"))
@@ -305,8 +306,8 @@ class OrdersPage(QWidget):
                 "Atividade",
                 [
                     (
-                        str(row["acao"]).replace("_", " ").capitalize(),
-                        f"{str(row['timestamp'])[:16].replace('T', ' ')} · {row['detalhe'] or ''}",
+                        display_action(row["acao"]),
+                        f"{display_date(row['timestamp'], time=True)} · {row['detalhe'] or ''}",
                     )
                     for row in history
                 ]

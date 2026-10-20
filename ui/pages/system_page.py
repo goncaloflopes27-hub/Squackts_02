@@ -31,6 +31,7 @@ from ui.components import (
     Toolbar,
     show_toast,
 )
+from ui.formatting import display_action, display_date
 from ui.theme import SPACING
 
 
@@ -203,8 +204,8 @@ class SystemPage(QWidget):
         rows = self.container.backup.list_recent_logs(limit=200)
         entries = [
             (
-                str(row["acao"]).replace("_", " ").capitalize(),
-                f"{str(row['timestamp'])[:16].replace('T', ' ')} · {row['detalhe'] or '—'}",
+                display_action(row["acao"]),
+                f"{display_date(row['timestamp'], time=True)} · {row['detalhe'] or '—'}",
             )
             for row in rows
         ]

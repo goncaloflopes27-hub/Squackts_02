@@ -15,6 +15,7 @@ from ui.components import (
     SecondaryButton,
     clear_layout,
 )
+from ui.formatting import display_date
 from ui.theme import SPACING
 from utils import format_currency
 
@@ -113,7 +114,7 @@ class DashboardPage(QWidget):
                 str(row["estado"]).replace("_", " ").capitalize(),
                 "Pago" if int(row["pago"]) else "Pendente",
                 format_currency(row["total"]),
-                str(row["updated_at"])[:16].replace("T", " "),
+                display_date(row["updated_at"], time=True),
             ]
             for j, value in enumerate(values):
                 self.recent_table.setItem(i, j, QTableWidgetItem(value))
