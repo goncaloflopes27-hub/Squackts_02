@@ -9,13 +9,14 @@ import tempfile
 import zipfile
 from contextlib import closing
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from sqlite3 import Connection, Row
 from typing import Any
 from uuid import uuid4
 
 from config import SCHEMA_USER_VERSION
 from repositories.logs import LogRepository
+from services.restore_journal import begin_restore, pending_recovery
 from utils import now_iso, to_json
 
 MAX_BACKUP_BYTES = 4 * 1024 * 1024 * 1024
@@ -85,6 +86,26 @@ class BackupService:
         self.backups_dir = backups_dir
         self.images_dir = images_dir
         self.logs_dir = logs_dir
+        self.restore_journal = images_dir.parent / ".restore-journal.json"
+
+    def recover_interrupted_restore(self) -> bool:
+        recovery = pending_recovery(self.restore_journal, self.backups_dir)
+        if recovery is None:
+            return False
+        with tempfile.TemporaryDirectory(prefix=".restore-recovery-", dir=self.images_dir.parent) as work:
+            staging = Path(work)
+            self._stage_backup(recovery, staging)
+            previous = staging / "discarded-images"
+            if self.images_dir.exists():
+                self.images_dir.replace(previous)
+            images = staging / "images"
+            images.mkdir(exist_ok=True)
+            images.replace(self.images_dir)
+            self._replace_database(staging / "database.sqlite3")
+            if self.conn.execute("PRAGMA integrity_check").fetchone()[0] != "ok" or self.conn.execute("PRAGMA foreign_key_check").fetchall():
+                raise RuntimeError("A recuperação do restauro interrompido não passou a verificação")
+        self.restore_journal.unlink()
+        return True
 
     def create_backup(self) -> Path:
         if self.conn.in_transaction:
@@ -151,6 +172,7 @@ class BackupService:
                 if len(entries) > MAX_BACKUP_FILES or sum(entry.file_size for entry in entries) > MAX_BACKUP_BYTES:
                     raise ValueError("O conteúdo do backup excede o limite suportado.")
                 names: set[str] = set()
+                folded_names: set[str] = set()
                 for entry in entries:
                     relative = PurePosixPath(entry.filename)
                     if (
@@ -162,6 +184,8 @@ class BackupService:
                         or stat.S_ISLNK(entry.external_attr >> 16)
                         or relative.as_posix() != entry.filename
                         or entry.filename in names
+                        or entry.filename.casefold() in folded_names
+                        or any(PureWindowsPath(part).is_reserved() or part.endswith((' ', '.')) or any(ord(c) < 32 or c in '<>"|?*' for c in part) for part in relative.parts)
                     ):
                         raise ValueError("O backup contém um caminho inválido ou duplicado.")
                     if not (
@@ -170,6 +194,7 @@ class BackupService:
                     ):
                         raise ValueError("O backup contém ficheiros inesperados.")
                     names.add(entry.filename)
+                    folded_names.add(entry.filename.casefold())
                 if "manifest.json" not in names or archive.getinfo("manifest.json").file_size > 10 * 1024 * 1024:
                     raise ValueError("Manifesto do backup ausente ou inválido.")
                 manifest = json.loads(archive.read("manifest.json"))
@@ -238,6 +263,7 @@ class BackupService:
                 self.conn.backup(copied)
             previous_images = staging / "previous-images"
             images_changed = False
+            begin_restore(self.restore_journal, recovery)
             try:
                 if inspection.format == "zip":
                     next_images = staging / "images"
@@ -264,6 +290,7 @@ class BackupService:
                         shutil.rmtree(self.images_dir)
                         if previous_images.exists():
                             previous_images.replace(self.images_dir)
+                    self.restore_journal.unlink(missing_ok=True)
                 except Exception as rollback_error:
                     # Preserve the on-disk recovery package outside temporary staging.
                     raise RuntimeError(
@@ -274,6 +301,7 @@ class BackupService:
             now_iso(), "system", "", "backup_restored", str(path), to_json({"recovery_backup": str(recovery)})
         )
         self.conn.commit()
+        self.restore_journal.unlink(missing_ok=True)
         return RestoreResult(True, recovery)
 
     def _replace_database(self, path: Path) -> None:

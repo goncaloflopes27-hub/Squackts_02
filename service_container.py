@@ -53,6 +53,8 @@ def bootstrap_infrastructure(paths: AppPaths | None = None, *, migrate_legacy: b
     ensure_dirs((selected.data_dir, selected.backups_dir, selected.images_dir, selected.logs_dir))
     conn = connect(selected.db_path)
     try:
+        recovery_service = BackupService(conn, LogRepository(conn), selected.db_path, selected.backups_dir, selected.images_dir, selected.logs_dir)
+        recovery_service.recover_interrupted_restore()
         apply_schema(conn)
         events = ChangeEvents()
         logs = LogRepository(conn)
